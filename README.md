@@ -5,6 +5,7 @@ This weeks todos:
     - visually as well, there are not a lot of outliers that *include* nighttime data
         - there are some days where ppfd is low nearly all day, so some days might get *excluded*
 - try some different ANN architectures
+  
 |Layer dimensions | Avg R-squared |
 | --------------- | ----- |
 |  4          | 0.634 |
