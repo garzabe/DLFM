@@ -17,3 +17,10 @@ This weeks todos:
 |  20         | 0.609 |
 
 - start lookup up time series predictors
+
+11/15 questions
+
+- can you pass along multiple/combined model state variables to the next step of the model?
+ - hyperparam tuning
+ - brute force/grid search of layer #/sizes
+ - start time-series model

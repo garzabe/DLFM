@@ -8,6 +8,7 @@ from torcheval.metrics import R2Score
 from enum import Enum
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from sklearn.model_selection import train_test_split, KFold
+from typing import Type, Callable
 
 global input_column_set
 
@@ -63,7 +64,7 @@ class FirstANN(nn.Module):
         return self.stack(x)
     
 class DynamicANN(nn.Module):
-    def __init__(self, layer_dims : list[int], activation_fn, activation_args = []):
+    def __init__(self, layer_dims : list[int], activation_fn : Callable, activation_args = []):
         super().__init__()
         global input_column_set
         sequential_layers = [
@@ -126,11 +127,10 @@ def prepare_data(site_name : Site, no_split = False) -> AmeriFLUXDataset:
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
 
+    global input_column_set
     df = df[['TIMESTAMP_START', *input_column_set, target_col]]
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
-
-    
 
     # group into daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
@@ -176,7 +176,7 @@ def prepare_data(site_name : Site, no_split = False) -> AmeriFLUXDataset:
 
 def train(dataloader : DataLoader,
           model : nn.Module,
-          loss_fn : nn.MSELoss, # not necessarily mseloss
+          loss_fn : Callable, # not necessarily mseloss
           optimizer : torch.optim.Optimizer):
     
     size = len(dataloader.dataset)
@@ -195,6 +195,57 @@ def train(dataloader : DataLoader,
         #if batch % 4 == 0:
         #    loss, current = loss.item(), batch*64 + len(X)
         #    print(f"loss: {loss:>7f} [{current:>5d}/{size:>5d}]")
+
+
+def train_kfold(num_folds : int,
+                model_class : Type[nn.Module],
+                lr : float, bs : int, epochs : int, loss_fn : Callable,
+                train_data : AmeriFLUXDataset,
+                device,
+                model_args = []):
+    
+    kfold = KFold(n_splits=num_folds, shuffle=False)
+
+    r2_results = {}
+
+    for fold, (train_idx, test_idx) in enumerate(kfold.split(train_data)):
+        print(f"Fold {fold}: ")
+        # set up next model
+        model : nn.Module = model_class(*model_args).to(device)
+        if fold==0:
+            print(model)
+
+        # set up dataloaders
+        # is there a better way to samnple?
+        train_subsampler = SubsetRandomSampler(train_idx)
+        test_subsampler = SubsetRandomSampler(test_idx)
+
+        train_loader = DataLoader(train_data, batch_size=bs, sampler=train_subsampler)
+        test_loader = DataLoader(train_data, batch_size=64, sampler=test_subsampler)
+
+
+        # Using SGD here but could also do Adam or others
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+
+        for t in range(epochs):
+            print(f"Epoch {t+1}")
+            train(train_loader, model, loss_fn, optimizer)
+            test(test_loader, model, loss_fn)
+        print("Completed optimization")
+
+        # compute the r squared value for this model
+        r2metric = R2Score(device=device)
+        r2_results[fold] = eval(test_loader, model, r2metric)
+
+    # display r squared results
+    print("K-Fold Cross Validation Results")
+    sum = 0
+    for key, value in r2_results.items():
+        print(f"Fold {key}: r2={value:.4f}")
+        sum += value
+    avg_r2 = sum/len(r2_results.items())
+    print(f"Average r-squared: {avg_r2}")
+    return avg_r2
 
 
 def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.MSELoss):
@@ -223,72 +274,47 @@ def eval(dataloader : DataLoader, model : nn.Module, metric_fn):
     print(f"Metric value: {metric_fn.compute().item():>8f}")
     return metric_fn.compute().item()
 
-def train_test(model_class, model_args = None):
+def train_test(model_class : Type[nn.Module], model_args = []):
     site = Site.Me2
     k_folds = 5
-    global input_column_set
-    input_column_set = me2_input_column_set if site==Site.Me2 else me6_input_column_set
-
-    kfold = KFold(n_splits=k_folds, shuffle=False)
+    epochs = 100
+    
 
     # 1. Prepare the data
+    global input_column_set
+    input_column_set = me2_input_column_set if site==Site.Me2 else me6_input_column_set
     train_data = prepare_data(site)
     #train_dataloader = DataLoader(train_data, batch_size=64, shuffle=True)
     #test_dataloader = DataLoader(test_data, batch_size=64, shuffle=False)
 
     # 2. Initialize the model
     device = ("cuda" if torch.cuda.is_available() else "cpu")
-
-    # 3. Train!
-    learning_rate = 1e-2
-    batch_size = 64
-    epochs = 100
-    # MSE loss is pretty similar to R-squared
-    # TODO: implement custom R-squared loss function?
     loss_fn = nn.MSELoss()
 
-    r2_results = {}
 
-    for fold, (train_idx, test_idx) in enumerate(kfold.split(train_data)):
-        print(f"Fold {fold}: ")
-        print(f"Training fold includes indices {train_idx[0]} to {train_idx[-1]}")
-        print(f"Testing fold includes indices from {test_idx[0]} to {test_idx[-1]}")
-        # set up next model
-        model : nn.Module = model_class(*model_args).to(device)
-        if fold==0:
-            print(model)
+    # 2.5 perform hyperparameter tuning to determine best learning rate and batch size
+    lr_candidates = [1e-1, 1e-2, 1e-4, 1e-5]
+    batch_size_candidates = [1, 4, 16, 32, 64, 128]
 
-        # set up dataloaders
-        # is there a better way to samnple?
-        train_subsampler = SubsetRandomSampler(train_idx)
-        test_subsampler = SubsetRandomSampler(test_idx)
+    # let's just be greedy and tune each one independently
+    lr_best = lr_candidates[0]
+    max_r2 = 0
+    for lr in lr_candidates:
+        r2 = train_kfold(2, model_class, lr, 64, epochs, loss_fn, train_data, device, model_args)
+        if r2 > max_r2:
+            lr_best = lr
+            max_r2 = r2
+    
+    max_r2 = 0
+    bs_best = batch_size_candidates[0]
+    for bs in batch_size_candidates:
+        r2 = train_kfold(2, model_class, lr_best, bs, epochs, loss_fn, train_data, device, model_args)
+        if r2 > max_r2:
+            max_r2 = r2
+            bs_best = bs
 
-        train_loader = DataLoader(train_data, batch_size=64, sampler=train_subsampler)
-        test_loader = DataLoader(train_data, batch_size=64, sampler=test_subsampler)
-
-
-        # Using SGD here but could also do Adam or others
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-
-        for t in range(epochs):
-            print(f"Epoch {t+1}")
-            train(train_loader, model, loss_fn, optimizer)
-            test(test_loader, model, loss_fn)
-        print("Completed optimization")
-
-        # compute the r squared value for this model
-        r2metric = R2Score(device=device)
-        r2_results[fold] = eval(test_loader, model, r2metric)
-
-    # display r squared results
-    print("K-Fold Cross Validation Results")
-    sum = 0
-    for key, value in r2_results.items():
-        print(f"Fold {key}: r2={value:.4f}")
-        sum += value
-    avg_r2 = sum/len(r2_results.items())
-    print(f"Average r-squared: {avg_r2}")
-    return avg_r2
+    # 3. Train with final hparam selections
+    r2_avg = train_kfold(k_folds, model_class, lr_best, bs_best, epochs, loss_fn, train_data, device, model_args)
         
 
     """
@@ -324,18 +350,20 @@ def train_test(model_class, model_args = None):
 def main():
     # comparing performance of first ann and two layer ann
     #first_r2 = train_test(FirstANN)
-    layer_sizes = [4,6,8,10,12,14,20]
-    results = []
-    for l1 in layer_sizes:
-        for l2 in layer_sizes:
-            arch = [l1, l2]
-            results.append((arch, train_test(DynamicANN, [arch, nn.ReLU])))
+    #layer_sizes = [4,6,8,10,12,14,20]
+    #results = []
+    #for l1 in layer_sizes:
+    #    for l2 in layer_sizes:
+    #        arch = [l1, l2]
+    #        results.append((arch, train_test(DynamicANN, [arch, nn.ReLU])))
+    #train_test(DynamicANN, [[4, 10, 8], nn.ReLU])
+    train_test(FirstANN)
 
     #for arch in architectures:
     #    results.append(train_test(DynamicANN, [arch, nn.ReLU]))
 
-    for arch, result in results:
-        print(f"Architecture {arch}: r-squared {result}")
+    #for arch, result in results:
+    #    print(f"Architecture {arch}: r-squared {result}")
 
 if __name__=="__main__":
     main()
