@@ -186,14 +186,15 @@ def prepare_data(site_name : Site, no_split = False) -> tuple[AmeriFLUXDataset, 
 def train(dataloader : DataLoader,
           model : nn.Module,
           loss_fn : Callable, # not necessarily mseloss
-          optimizer : torch.optim.Optimizer) -> None:
+          optimizer : torch.optim.Optimizer,
+          device) -> None:
     
     size = len(dataloader.dataset)
     model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Get predictions and loss value
-        pred = model(X)
-        loss : torch.Tensor = loss_fn(pred, y)
+        pred = model(X.to(device))
+        loss : torch.Tensor = loss_fn(pred, y.to(device))
 
         # backpropogate
         loss.backward()
@@ -238,13 +239,13 @@ def train_kfold(num_folds : int,
 
         for t in range(epochs):
             print(f"Epoch {t+1}")
-            train(train_loader, model, loss_fn, optimizer)
-            test(test_loader, model, loss_fn)
+            train(train_loader, model, loss_fn, optimizer, device)
+            test(test_loader, model, loss_fn, device)
         print("Completed optimization")
 
         # compute the r squared value for this model
         r2metric = R2Score(device=device)
-        r2_results[fold] = eval(test_loader, model, r2metric)
+        r2_results[fold] = eval(test_loader, model, r2metric, device)
 
     # display r squared results
     print("K-Fold Cross Validation Results")
@@ -257,7 +258,7 @@ def train_kfold(num_folds : int,
     return avg_r2
 
 
-def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.MSELoss) -> None:
+def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.MSELoss, device) -> None:
     size = len(dataloader.dataset)
     model.eval()
     num_batches = len(dataloader)
@@ -265,20 +266,20 @@ def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.MSELoss) -> No
 
     with torch.no_grad():
         for _, (X, y) in enumerate(dataloader):
-            pred = model(X)
-            test_loss += loss_fn(pred, y).item()
+            pred = model(X.to(device))
+            test_loss += loss_fn(pred, y.to(device)).item()
             
     test_loss /= num_batches
     print(f"Test Avg loss: {test_loss:>8f}")
 
-def eval(dataloader : DataLoader, model : nn.Module, metric_fn) -> float:
+def eval(dataloader : DataLoader, model : nn.Module, metric_fn, device) -> float:
     size = len(dataloader.dataset)
     model.eval()
 
     with torch.no_grad():
         for _, (X, y) in enumerate(dataloader):
-            pred = model(X)
-            metric_fn.update(input=pred, target=y)
+            pred = model(X.to(device))
+            metric_fn.update(input=pred, target=y.to(device))
             
     print(f"Metric value: {metric_fn.compute().item():>8f}")
     return metric_fn.compute().item()
@@ -327,7 +328,7 @@ def train_test(model_class : Type[nn.Module], model_args = []) -> nn.Module:
     optimizer = torch.optim.SGD(model.parameters(), lr=lr_best)
     for t in range(epochs):
             print(f"Epoch {t+1}")
-            train(train_loader, model, loss_fn, optimizer)
+            train(train_loader, model, loss_fn, optimizer, device)
     return model
         
 
@@ -338,7 +339,7 @@ def train_test_eval(model_class : Type[nn.Module], model_args = []) -> float:
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     r2metric = R2Score(device=device)
-    return eval(eval_loader, final_model, r2metric)
+    return eval(eval_loader, final_model, r2metric, device)
 
     """
     # Visualize model performance, and
