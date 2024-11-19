@@ -11,6 +11,11 @@ from sklearn.model_selection import train_test_split, KFold
 from typing import Type, Callable
 
 global input_column_set
+global site
+
+Site = Enum('Site', ['Me2', 'Me6'])
+
+site = Site.Me2
 
 # this is the set for Me-2
 me2_input_column_set = [
@@ -96,10 +101,9 @@ class AmeriFLUXDataset(Dataset):
         label : np.ndarray = np.array([self.labels.iloc[idx]], dtype=np.float32)
         return input, label
 
-Site = Enum('Site', ['Me2', 'Me6'])
 
 # returns a training dataset and a test dataset
-def prepare_data(site_name : Site, no_split = False) -> AmeriFLUXDataset:
+def prepare_data(site_name : Site, no_split = False) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
     filepath = ''
     if site_name == Site.Me2:
         filepath = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_19-5/AMF_US-Me2_BASE_HH_19-5.csv'
@@ -161,6 +165,10 @@ def prepare_data(site_name : Site, no_split = False) -> AmeriFLUXDataset:
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
 
+    # simple train-test and eval 80/20 split
+    _df_eval = _df.iloc[int(len(_df)*0.2):]
+    _df = _df.iloc[0:int(len(_df)*0.2)]
+
     ## TODO: remove this, we are no longer using default train test splitting
     # split in to train, test, validation
     #if not no_split:
@@ -171,13 +179,14 @@ def prepare_data(site_name : Site, no_split = False) -> AmeriFLUXDataset:
     #    df_test = None
     #df_train = _df
     #return AmeriFLUXDataset(df_train), AmeriFLUXDataset(df_test) if df_test is not None else None
-    return AmeriFLUXDataset(_df)
+    return AmeriFLUXDataset(_df), AmeriFLUXDataset(_df_eval)
     
 
+# TODO: have this function return the training history
 def train(dataloader : DataLoader,
           model : nn.Module,
           loss_fn : Callable, # not necessarily mseloss
-          optimizer : torch.optim.Optimizer):
+          optimizer : torch.optim.Optimizer) -> None:
     
     size = len(dataloader.dataset)
     model.train()
@@ -202,7 +211,7 @@ def train_kfold(num_folds : int,
                 lr : float, bs : int, epochs : int, loss_fn : Callable,
                 train_data : AmeriFLUXDataset,
                 device,
-                model_args = []):
+                model_args = []) -> float:
     
     kfold = KFold(n_splits=num_folds, shuffle=False)
 
@@ -248,7 +257,7 @@ def train_kfold(num_folds : int,
     return avg_r2
 
 
-def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.MSELoss):
+def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.MSELoss) -> None:
     size = len(dataloader.dataset)
     model.eval()
     num_batches = len(dataloader)
@@ -262,7 +271,7 @@ def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.MSELoss):
     test_loss /= num_batches
     print(f"Test Avg loss: {test_loss:>8f}")
 
-def eval(dataloader : DataLoader, model : nn.Module, metric_fn):
+def eval(dataloader : DataLoader, model : nn.Module, metric_fn) -> float:
     size = len(dataloader.dataset)
     model.eval()
 
@@ -274,16 +283,15 @@ def eval(dataloader : DataLoader, model : nn.Module, metric_fn):
     print(f"Metric value: {metric_fn.compute().item():>8f}")
     return metric_fn.compute().item()
 
-def train_test(model_class : Type[nn.Module], model_args = []):
-    site = Site.Me2
+def train_test(model_class : Type[nn.Module], model_args = []) -> nn.Module:
     k_folds = 5
     epochs = 100
     
-
+    global site
     # 1. Prepare the data
     global input_column_set
     input_column_set = me2_input_column_set if site==Site.Me2 else me6_input_column_set
-    train_data = prepare_data(site)
+    train_data, _ = prepare_data(site)
     #train_dataloader = DataLoader(train_data, batch_size=64, shuffle=True)
     #test_dataloader = DataLoader(test_data, batch_size=64, shuffle=False)
 
@@ -300,7 +308,7 @@ def train_test(model_class : Type[nn.Module], model_args = []):
     lr_best = lr_candidates[0]
     max_r2 = 0
     for lr in lr_candidates:
-        r2 = train_kfold(2, model_class, lr, 64, epochs, loss_fn, train_data, device, model_args)
+        r2 = train_kfold(k_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, model_args)
         if r2 > max_r2:
             lr_best = lr
             max_r2 = r2
@@ -308,14 +316,29 @@ def train_test(model_class : Type[nn.Module], model_args = []):
     max_r2 = 0
     bs_best = batch_size_candidates[0]
     for bs in batch_size_candidates:
-        r2 = train_kfold(2, model_class, lr_best, bs, epochs, loss_fn, train_data, device, model_args)
+        r2 = train_kfold(k_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, model_args)
         if r2 > max_r2:
             max_r2 = r2
             bs_best = bs
 
     # 3. Train with final hparam selections
-    r2_avg = train_kfold(k_folds, model_class, lr_best, bs_best, epochs, loss_fn, train_data, device, model_args)
+    model : nn.Module = model_class(*model_args).to(device)
+    train_loader = DataLoader(train_data, batch_size=bs_best)
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr_best)
+    for t in range(epochs):
+            print(f"Epoch {t+1}")
+            train(train_loader, model, loss_fn, optimizer)
+    return model
         
+
+def train_test_eval(model_class : Type[nn.Module], model_args = []) -> float:
+    global site
+    final_model = train_test(model_class, model_args=model_args)
+    _, eval_data = prepare_data(site)
+    eval_loader = DataLoader(eval_data, batch_size=64)
+    device = ("cuda" if torch.cuda.is_available() else "cpu")
+    r2metric = R2Score(device=device)
+    return eval(eval_loader, final_model, r2metric)
 
     """
     # Visualize model performance, and
@@ -346,24 +369,24 @@ def train_test(model_class : Type[nn.Module], model_args = []):
     plt.show()
     """
 
-
+import datetime
 def main():
     # comparing performance of first ann and two layer ann
-    #first_r2 = train_test(FirstANN)
-    #layer_sizes = [4,6,8,10,12,14,20]
-    #results = []
-    #for l1 in layer_sizes:
-    #    for l2 in layer_sizes:
-    #        arch = [l1, l2]
-    #        results.append((arch, train_test(DynamicANN, [arch, nn.ReLU])))
-    #train_test(DynamicANN, [[4, 10, 8], nn.ReLU])
-    train_test(FirstANN)
+    first_r2 = train_test_eval(FirstANN)
+    layer_sizes = [4,6,8,10,12,14,20]
+    results = [('original', first_r2)]
+    for l1 in layer_sizes:
+        arch = [l1]
+        results.append((arch, train_test_eval(DynamicANN, [arch, nn.ReLU])))
+    for l1 in layer_sizes:
+        for l2 in layer_sizes:
+            arch = [l1, l2]
+            results.append((arch, train_test(DynamicANN, [arch, nn.ReLU])))
 
-    #for arch in architectures:
-    #    results.append(train_test(DynamicANN, [arch, nn.ReLU]))
-
-    #for arch, result in results:
-    #    print(f"Architecture {arch}: r-squared {result}")
+    with open('output.txt', 'a+') as f:
+        dt = datetime.datetime.now()
+        for arch, r2 in results:
+            f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")
 
 if __name__=="__main__":
     main()
