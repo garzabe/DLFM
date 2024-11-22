@@ -373,12 +373,13 @@ def train_test_eval(model_class : Type[nn.Module], model_args = []) -> float:
 import datetime
 def main():
     # comparing performance of first ann and two layer ann
-    first_r2 = train_test_eval(FirstANN)
+    results = []
+    #first_r2 = train_test_eval(FirstANN)
     layer_sizes = [4,6,8,10,12,14,20]
-    results = [('original', first_r2)]
-    for l1 in layer_sizes:
-        arch = [l1]
-        results.append((arch, train_test_eval(DynamicANN, [arch, nn.ReLU])))
+    #results = [('original', first_r2)]
+    #for l1 in layer_sizes:
+    #    arch = [l1]
+    #    results.append((arch, train_test_eval(DynamicANN, [arch, nn.ReLU])))
     for l1 in layer_sizes:
         for l2 in layer_sizes:
             arch = [l1, l2]
