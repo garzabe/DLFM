@@ -383,12 +383,10 @@ def main():
     for l1 in layer_sizes:
         for l2 in layer_sizes:
             arch = [l1, l2]
-            results.append((arch, train_test(DynamicANN, [arch, nn.ReLU])))
-
-    with open('output.txt', 'a+') as f:
-        dt = datetime.datetime.now()
-        for arch, r2 in results:
-            f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")
+            r2 = train_test_eval(DynamicANN, [arch, nn.ReLU])
+            with open('output.txt', 'a+') as f:
+                dt = datetime.datetime.now()
+                f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")        
 
 if __name__=="__main__":
     main()
