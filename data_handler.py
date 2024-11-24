@@ -1,8 +1,25 @@
 import pandas as pd
 from enum import Enum
 import numpy as np
+from torch.utils.data import Dataset
 
 Site = Enum('Site', ['Me2', 'Me6'])
+
+class AmeriFLUXDataset(Dataset):
+    def __init__(self, df_X_y : pd.DataFrame):
+        # hold onto the original dataframe
+        self.df = df_X_y
+        _df = df_X_y.reset_index()
+        self.inputs : pd.DataFrame = _df.drop(columns=['DAY', 'NEE'])
+        self.labels : pd.Series = _df['NEE']
+
+    def __len__(self, ):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        input : np.ndarray = self.inputs.iloc[idx].drop("index").to_numpy(dtype=np.float32)
+        label : np.ndarray = np.array([self.labels.iloc[idx]], dtype=np.float32)
+        return input, label
 
 def get_data(site : Site):
     if not isinstance(site, Site):

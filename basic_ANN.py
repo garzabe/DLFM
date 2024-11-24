@@ -166,8 +166,11 @@ def prepare_data(site_name : Site, no_split = False) -> tuple[AmeriFLUXDataset, 
     _df["NEE"] = df_X_y["NEE"]
 
     # simple train-test and eval 80/20 split
-    _df_eval = _df.iloc[int(len(_df)*0.2):]
-    _df = _df.iloc[0:int(len(_df)*0.2)]
+    train_size = int(len(_df)*0.8)
+    _df_eval = _df.iloc[train_size:]
+    _df = _df.iloc[0:train_size]
+    print(f"The training set has {len(_df)} entries")
+    print(f"The eval set has {len(_df_eval)} entries")
 
     ## TODO: remove this, we are no longer using default train test splitting
     # split in to train, test, validation
@@ -284,10 +287,7 @@ def eval(dataloader : DataLoader, model : nn.Module, metric_fn, device) -> float
     print(f"Metric value: {metric_fn.compute().item():>8f}")
     return metric_fn.compute().item()
 
-def train_test(model_class : Type[nn.Module], model_args = []) -> nn.Module:
-    k_folds = 5
-    epochs = 100
-    
+def train_test(model_class : Type[nn.Module], model_args = [], epochs : int = 100, num_folds : int = 5) -> nn.Module:
     global site
     # 1. Prepare the data
     global input_column_set
@@ -309,7 +309,7 @@ def train_test(model_class : Type[nn.Module], model_args = []) -> nn.Module:
     lr_best = lr_candidates[0]
     max_r2 = 0
     for lr in lr_candidates:
-        r2 = train_kfold(k_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, model_args)
+        r2 = train_kfold(num_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, model_args)
         if r2 > max_r2:
             lr_best = lr
             max_r2 = r2
@@ -317,7 +317,7 @@ def train_test(model_class : Type[nn.Module], model_args = []) -> nn.Module:
     max_r2 = 0
     bs_best = batch_size_candidates[0]
     for bs in batch_size_candidates:
-        r2 = train_kfold(k_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, model_args)
+        r2 = train_kfold(num_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, model_args)
         if r2 > max_r2:
             max_r2 = r2
             bs_best = bs
@@ -332,9 +332,9 @@ def train_test(model_class : Type[nn.Module], model_args = []) -> nn.Module:
     return model
         
 
-def train_test_eval(model_class : Type[nn.Module], model_args = []) -> float:
+def train_test_eval(model_class : Type[nn.Module], model_args = [], num_folds : int = 5, epochs : int = 100) -> float:
     global site
-    final_model = train_test(model_class, model_args=model_args)
+    final_model = train_test(model_class, model_args=model_args, num_folds=num_folds, epochs=epochs)
     _, eval_data = prepare_data(site)
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
@@ -374,12 +374,14 @@ import datetime
 def main():
     # comparing performance of first ann and two layer ann
     results = []
-    #first_r2 = train_test_eval(FirstANN)
+    first_r2 = train_test_eval(FirstANN)
+    results = [('original', first_r2)]
     layer_sizes = [4,6,8,10,12,14,20]
-    #results = [('original', first_r2)]
-    #for l1 in layer_sizes:
-    #    arch = [l1]
-    #    results.append((arch, train_test_eval(DynamicANN, [arch, nn.ReLU])))
+    for l1 in layer_sizes:
+        arch = [l1]
+        with open('output.txt', 'a+') as f:
+                dt = datetime.datetime.now()
+                f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")        
     for l1 in layer_sizes:
         for l2 in layer_sizes:
             arch = [l1, l2]
