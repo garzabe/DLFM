@@ -374,11 +374,12 @@ import datetime
 def main():
     # comparing performance of first ann and two layer ann
     results = []
-    first_r2 = train_test_eval(FirstANN)
-    results = [('original', first_r2)]
+    #first_r2 = train_test_eval(FirstANN)
+    #results = [('original', first_r2)]
     layer_sizes = [4,6,8,10,12,14,20]
     for l1 in layer_sizes:
         arch = [l1]
+        r2 = train_test_eval(DynamicANN, [arch, nn.ReLU])
         with open('output.txt', 'a+') as f:
                 dt = datetime.datetime.now()
                 f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")        
