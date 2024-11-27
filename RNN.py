@@ -99,7 +99,7 @@ class RNN(nn.Module):
     
     def forward(self, x):
         _batch_size = x.shape[0]
-        h0 = torch.zeros(1, _batch_size, 8)
+        h0 = torch.zeros(1, _batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
         # we are only interested in the final output (at the moment)
         _, hn = self.rnn(x, h0)
         _hn = self.relu(hn)
