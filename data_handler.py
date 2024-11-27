@@ -20,6 +20,19 @@ class AmeriFLUXDataset(Dataset):
         input : np.ndarray = self.inputs.iloc[idx].drop("index").to_numpy(dtype=np.float32)
         label : np.ndarray = np.array([self.labels.iloc[idx]], dtype=np.float32)
         return input, label
+    
+class AmeriFLUXSequenceDataset(Dataset):
+    def __init__(self, X, y):
+        self.inputs = X
+        self.labels = y
+
+    def __len__(self):
+        return len(self.labels)
+    
+    def __getitem__(self, idx):
+        input = self.inputs[idx]
+        label = self.labels[idx]
+        return input, label
 
 def get_data(site : Site):
     if not isinstance(site, Site):
