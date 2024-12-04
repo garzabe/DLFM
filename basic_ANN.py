@@ -88,13 +88,21 @@ class DynamicANN(nn.Module):
 class AmeriFLUXDataset(Dataset):
     def __init__(self, df_X_y : pd.DataFrame):
         # hold onto the original dataframe
-        self.df = df_X_y
-        _df = df_X_y.reset_index()
-        self.inputs : pd.DataFrame = _df.drop(columns=['DAY', 'NEE'])
-        self.labels : pd.Series = _df['NEE']
+        self.df = df_X_y.reset_index()
+        self.years = self.df['DAY'].str[:4].unique()
+        self.inputs : pd.DataFrame = self.df.drop(columns=['DAY', 'NEE'])
+        self.labels : pd.Series = self.df['NEE']
 
     def __len__(self, ):
         return len(self.labels)
+    
+    # return the train and test index ranges for a single fold
+    # with one year left out for test
+    def get_train_test_idx(self, delta_year : int) -> tuple[list[int], list[int]]:
+        year = self.years[-1-delta_year]
+        test_year_match = self.df['DAY'].str.match(rf'^{year}\d\d\d\d$')
+        return self.df[~test_year_match].index.to_list(), self.df[test_year_match].index.to_list()
+
 
     def __getitem__(self, idx):
         input : np.ndarray = self.inputs.iloc[idx].drop("index").to_numpy(dtype=np.float32)
@@ -103,7 +111,7 @@ class AmeriFLUXDataset(Dataset):
 
 
 # returns a training dataset and a test dataset
-def prepare_data(site_name : Site, no_split = False) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_data(site_name : Site, no_split = False, eval_years : int = 2, stat_interval : int = -1) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
     filepath = ''
     if site_name == Site.Me2:
         filepath = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_19-5/AMF_US-Me2_BASE_HH_19-5.csv'
@@ -165,10 +173,14 @@ def prepare_data(site_name : Site, no_split = False) -> tuple[AmeriFLUXDataset, 
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
 
-    # simple train-test and eval 80/20 split
+    # simple train-eval and eval 80/20 split
     train_size = int(len(_df)*0.8)
-    _df_eval = _df.iloc[train_size:]
-    _df = _df.iloc[0:train_size]
+    # determine where the eval set starts
+    first_eval_year = int(_df["DAY"].iloc[-1][:4]) - (eval_years - 1)
+    eval_year_range = [str(y) for y in range(first_eval_year, 2022)]
+    year_match_str = '|'.join(eval_year_range)
+    _df_eval = _df[_df["DAY"].str.match(rf'^{year_match_str}\d\d\d\d$')]
+    _df = _df[~_df["DAY"].str.match(rf'^{year_match_str}\d\d\d\d$')]
     print(f"The training set has {len(_df)} entries")
     print(f"The eval set has {len(_df_eval)} entries")
 
@@ -221,12 +233,17 @@ def train_kfold(num_folds : int,
 
     r2_results = {}
 
-    for fold, (train_idx, test_idx) in enumerate(kfold.split(train_data)):
+    # use our own fold indexing
+    for fold, (_train, _test) in enumerate(kfold.split(train_data)):
         print(f"Fold {fold}: ")
         # set up next model
         model : nn.Module = model_class(*model_args).to(device)
         if fold==0:
             print(model)
+        # start with the last year as the first validation year and work our way back with each fold
+        train_idx, test_idx = train_data.get_train_test_idx(fold)
+        print(len(train_idx))
+        print(len(test_idx))
 
         # set up dataloaders
         # is there a better way to samnple?
@@ -235,8 +252,6 @@ def train_kfold(num_folds : int,
 
         train_loader = DataLoader(train_data, batch_size=bs, sampler=train_subsampler)
         test_loader = DataLoader(train_data, batch_size=64, sampler=test_subsampler)
-
-
         # Using SGD here but could also do Adam or others
         optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
@@ -339,7 +354,18 @@ def train_test_eval(model_class : Type[nn.Module], model_args = [], num_folds : 
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     r2metric = R2Score(device=device)
-    return eval(eval_loader, final_model, r2metric, device)
+    r2eval =  eval(eval_loader, final_model, r2metric, device)
+    dt = datetime.datetime.now()
+    with open(f"training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.txt", 'w') as f:
+        f.write(f'Layer Architecture: {model_args[0]}\n')
+        f.write(f'Activation: {model_args[1]}\n')
+        f.write(f'Folds: {num_folds}\n')
+        f.write(f'Epochs: {epochs}\n\n')
+        f.write(f'{final_model}')
+        f.write('\n\n')
+        f.write(f'Evaluation r-squared: {r2eval}\n')
+    return r2eval
+
 
     """
     # Visualize model performance, and
@@ -373,9 +399,10 @@ def train_test_eval(model_class : Type[nn.Module], model_args = [], num_folds : 
 import datetime
 def main():
     # comparing performance of first ann and two layer ann
-    results = []
+    train_test_eval(DynamicANN, [[10, 20], nn.ReLU], 5, 50)
     #first_r2 = train_test_eval(FirstANN)
     #results = [('original', first_r2)]
+    """
     layer_sizes = [4,6,8,10,12,14,20]
     for l1 in layer_sizes:
         arch = [l1]
@@ -390,6 +417,7 @@ def main():
             with open('output.txt', 'a+') as f:
                 dt = datetime.datetime.now()
                 f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")        
-
+    """
+                
 if __name__=="__main__":
     main()
