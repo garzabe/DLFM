@@ -159,7 +159,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
 def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     model_args = kwargs.get('model_args', [])
     num_folds = kwargs.get('num_folds', 5)
-    epochs = kwargs.get('epochs', 5)
+    epochs = kwargs.get('epochs', 100)
     site = kwargs.get('site', Site.Me2)
     input_columns = kwargs.get('input_columns', None)
 
