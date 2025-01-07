@@ -4,6 +4,8 @@ from torcheval.metrics import R2Score
 from torch import nn
 from typing import Callable, Type
 import datetime
+import numpy as np
+import itertools
 
 from data_handler import AmeriFLUXDataset, prepare_data, Site
 
@@ -107,24 +109,25 @@ def train_kfold(num_folds : int,
     print(f"Average r-squared: {avg_r2}")
     return avg_r2
 
-# 
+
 def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     # Accepted kwargs
-    epochs = kwargs.get('epochs', 100)
+    
     num_folds = kwargs.get('num_folds', 5)
     input_columns = kwargs.get('input_columns', [])
     site = kwargs.get('site', Site.Me2)
-    lr_candidates = kwargs.get('lr_candidates', [1e-1, 1e-2, 1e-4, 1e-5])
-    batch_size_candidates = kwargs.get('batch_size_candidates', [1, 4, 16, 32, 64, 128])
-    input_columns = kwargs.get('input_columns', None)
-    stat_interval =  kwargs.get('stat_interval', None)
+    
+    # Optimizable hyperparameters - provide a list of test values if we want to tune, otherwise provide a single value
+    epochs = kwargs.get('epochs', 100)
     layer_dims = kwargs.get('layer_dims', (4,6))
     activation_fn = kwargs.get('activation_fn', nn.ReLU)
+    lr = kwargs.get('lr', 1e-2)
+    batch_size = kwargs.get('batch_size', 64)
+    stat_interval =  kwargs.get('stat_interval', None)
 
     num_features = len(input_columns)*(3 if stat_interval is not None else 1)
 
-    # 1. Prepare the data
-    train_data, _ = prepare_data(site, **kwargs)
+    
     #train_dataloader = DataLoader(train_data, batch_size=64, shuffle=True)
     #test_dataloader = DataLoader(test_data, batch_size=64, shuffle=False)
 
@@ -132,49 +135,69 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     loss_fn = nn.MSELoss()
 
-    # 2.5 perform hyperparameter tuning to determine best learning rate and batch size
+    # Construct the test combinations to test
+    epochs_list = epochs if isinstance(epochs, list) else [epochs]
+    layer_dims_list = layer_dims if isinstance(layer_dims, list) else [layer_dims]
+    activation_fn_list = activation_fn if isinstance(activation_fn, list) else [activation_fn]
+    lr_list = lr if isinstance(lr, list) else [lr]
+    batch_size_list = batch_size if isinstance(batch_size, list) else [batch_size]
+    stat_interval_list = stat_interval if isinstance(stat_interval, list) else [stat_interval]
 
+
+    data_candidates = [{'stat_interval': si} for si in stat_interval_list]
+    candidates = []
+    for e, ld, af, l, bs, in itertools.product(epochs_list, layer_dims_list, activation_fn_list, lr_list, batch_size_list):
+        candidate = {"epochs": e, "layer_dims": ld, "activation_fn": af, "lr": l, "batch_size": bs}
+        candidates.append(candidate)
+
+    print(f"Running K-Fold Cross Validation on {len(candidates)*len(data_candidates)} different hyperparameter configurations")
     # let's just be greedy and tune each one independently
-    lr_best = lr_candidates[0]
-    max_r2 = 0
-    for lr in lr_candidates:
-        r2 = train_kfold(num_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, num_features, layer_dims=layer_dims, activation_fn=activation_fn)
-        if r2 > max_r2:
-            lr_best = lr
-            max_r2 = r2
-    
-    max_r2 = 0
-    bs_best = batch_size_candidates[0]
-    for bs in batch_size_candidates:
-        r2 = train_kfold(num_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, num_features, layer_dims=layer_dims, activation_fn=activation_fn)
-        if r2 > max_r2:
-            max_r2 = r2
-            bs_best = bs
+    best = None
+    data_best = None
+    max_r2 = -np.inf
+    for data_candidate in data_candidates:
+        train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], input_columns=input_columns)
+        for candidate in candidates:
+            print(f"""Hyperparameters:
+Stat Interval: {data_candidate['stat_interval']}
+Learning Rate: {candidate['lr']}
+Batch Size: {candidate['batch_size']}
+Epochs: {candidate['epochs']}
+Layer Dimensions: {candidate['layer_dims']}
+Activation Function: {candidate['activation_fn'].__name__}
+""")
+            r2 = train_kfold(num_folds, model_class,
+                            candidate['lr'],
+                            candidate['batch_size'],
+                            candidate['epochs'],
+                            loss_fn, train_data, device, num_features,
+                            layer_dims=candidate['layer_dims'],
+                            activation_fn=candidate['activation_fn'])
+            if r2 > max_r2:
+                best = candidate
+                data_best = data_candidate
+                max_r2 = r2
 
     # 3. Train with final hparam selections
-    model : nn.Module = model_class(num_features, layer_dims=layer_dims, activation_fn=activation_fn).to(device)
-    train_loader = DataLoader(train_data, batch_size=bs_best)
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr_best)
-    for t in range(epochs):
+    train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], input_columns=input_columns)
+    model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn']).to(device)
+    train_loader = DataLoader(train_data, batch_size=best['batch_size'])
+    optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
+    for t in range(best['epochs']):
             print(f"Epoch {t+1}")
             train(train_loader, model, loss_fn, optimizer, device)
-    return model
-
+    return model, best | data_best
 
 def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     num_folds = kwargs.get('num_folds', 5)
-    epochs = kwargs.get('epochs', 100)
     site = kwargs.get('site', Site.Me2)
-    input_columns = kwargs.get('input_columns', None)
-    stat_interval = kwargs.get('stat_interval', None)
-    layer_dims = kwargs.get('layer_dims', (4,6))
-    activation_fn = kwargs.get('activation_fn', nn.ReLU)
+    input_columns=kwargs.get('input_columns', [])
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
-    final_model = train_hparam(model_class, **kwargs)
+    final_model, hparams = train_hparam(model_class, **kwargs)
 
     # Evaluate the final model on the evaluation set
-    _, eval_data = prepare_data(site, **kwargs)
+    _, eval_data = prepare_data(site, stat_interval=hparams['stat_interval'], input_columns=input_columns)
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     r2metric = R2Score(device=device)
@@ -183,10 +206,12 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     # write the results to an output file
     dt = datetime.datetime.now()
     with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.txt", 'w') as f:
-        f.write(f'Layer Architecture: {layer_dims}\n')
-        f.write(f'Activation: {activation_fn}\n')
+        f.write(f'Layer Architecture: {hparams["layer_dims"]}\n')
+        f.write(f'Activation: {hparams["activation_fn"].__name__}\n')
+        f.write(f'Learning Rate: {hparams["lr"]}\n')
+        f.write(f'Batch Size: {hparams["bs"]}\n')
         f.write(f'Folds: {num_folds}\n')
-        f.write(f'Epochs: {epochs}\n\n')
+        f.write(f'Epochs: {hparams["epochs"]}\n\n')
         f.write(f'{final_model}')
         f.write('\n\n')
         f.write(f'Evaluation r-squared: {r2eval}\n')

@@ -154,9 +154,8 @@ def prepare_data(site_name : Site, no_split = False, eval_years : int = 2, **kwa
     #print(df_X_y.head())
     #df_X_y = df_X_y.drop(columns=['DAY'])
     print(f"Dropped {_nrows - len(df_X_y)} rows from min count filter ({len(df_X_y)})")
-    print(df_X_y.head(100))
 
-    # TODO: normalize all data
+    # normalize all data
     # add these columns back at the end
     _df = df_X_y.drop(columns=["DAY", "NEE"])
     _df = (_df - _df.mean())/_df.std()
