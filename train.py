@@ -70,13 +70,16 @@ def train_kfold(num_folds : int,
 
     # use our own fold indexing
     for fold in range(num_folds):
-        print(f"Fold {fold}: ")
+        print(f"Fold {fold+1}: ")
         # set up next model
         model : nn.Module = model_class(num_features, **model_kwargs).to(device)
         if fold==0:
             print(model)
         # start with the last year as the first validation year and work our way back with each fold
         train_idx, test_idx = train_data.get_train_test_idx(fold)
+        if train_idx is None:
+            print("No more one-year folds can be done, ending K-Fold cross validation")
+            break
 
         # set up dataloaders
         # is there a better way to samnple?

@@ -34,10 +34,15 @@ class AmeriFLUXLinearDataset(Dataset):
     # return the train and test index ranges for a single fold
     # with one year left out for test
     def get_train_test_idx(self, delta_year : int) -> tuple[list[int], list[int]]:
+        if delta_year > len(self.years):
+            print(f"Warning: delta_year ({delta_year}) is greater than the number of years in the dataset ({len(self.years)})")
+            return None, None
         year = self.years[-1-delta_year]
         test_year_match = self.df['DAY'].str.match(rf'^{year}\d\d\d\d$')
         return self.df[~test_year_match].index.to_list(), self.df[test_year_match].index.to_list()
 
+    def get_num_years(self):
+        return len(self.years)
 
     def __getitem__(self, idx):
         input : np.ndarray = self.inputs.iloc[idx].drop("index").to_numpy(dtype=np.float32)

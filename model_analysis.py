@@ -52,7 +52,7 @@ def best_vanilla_network_search(site, input_columns, stat_interval=None):
     # or Python will simplify it to an int
     train_test_eval(DynamicANN,
                     layer_dims=[(1, ), (4, ), (8, ), (10, ), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
-                    num_folds=10,
+                    num_folds=7,
                     epochs=100,
                     site=site,
                     input_columns=input_columns,
