@@ -82,13 +82,13 @@ def prepare_data(site_name : Site, no_split = False, eval_years : int = 2, **kwa
         df = df[['TIMESTAMP_START', *input_columns, 'USTAR', target_col]]
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
+    if stat_interval is not None:
+        rolling_columns = [col + '_rolling_var' for col in input_columns] + [col + '_rolling_avg' for col in input_columns]
 
-    rolling_columns = [col + '_rolling_var' for col in input_columns] + [col + '_rolling_avg' for col in input_columns]
-
-    for col in input_columns:
-        rolling_series = df[col].rolling(window=48*stat_interval, min_periods=5*stat_interval)
-        df[col+'_rolling_var'] = rolling_series.var()
-        df[col+'_rolling_avg'] = rolling_series.mean()
+        for col in input_columns:
+            rolling_series = df[col].rolling(window=48*stat_interval, min_periods=5*stat_interval)
+            df[col+'_rolling_var'] = rolling_series.var()
+            df[col+'_rolling_avg'] = rolling_series.mean()
 
 
     """
