@@ -70,27 +70,67 @@ def get_data(site : Site):
 
     return data
 
-def prepare_data(site_name : Site, input_columns : list[str], no_split = False, eval_years : int = 2, stat_interval : int = -1) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_data(site_name : Site, input_columns : list[str], no_split = False, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
     df = get_data(site_name)
-
-    _nrows = len(df)
-    # drop all rows where ustar is not sufficient
-    df = df[df['USTAR'] > 0.2]
-    #print(f"Dropped {_nrows - len(df)}  rows with USTAR threshold ({len(df)})")
-    
-
-    # TODO: improve daylight row selection
-    df = df[df['PPFD_IN'] > 4.0]
-
-    _nrows = len(df)
+    stat_interval = kwargs.get('stat_interval', None)
 
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
 
     if input_columns is not None:
-        df = df[['TIMESTAMP_START', *input_columns, target_col]]
+        df = df[['TIMESTAMP_START', *input_columns, 'USTAR', target_col]]
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
+
+    rolling_columns = [col + '_rolling_var' for col in input_columns] + [col + '_rolling_avg' for col in input_columns]
+
+    for col in input_columns:
+        rolling_series = df[col].rolling(window=48*stat_interval, min_periods=5*stat_interval)
+        df[col+'_rolling_var'] = rolling_series.var()
+        df[col+'_rolling_avg'] = rolling_series.mean()
+
+
+    """
+    _nrows = len(df)
+    temporal_columns = []
+    if stat_interval is not None:
+        halfhour_interval = stat_interval*48
+        print("Adding temporal data...")
+        for input_column in input_columns:
+            temporal_avg_col = input_column + "_prev_avg"
+            temporal_var_col = input_column + '_prev_var'
+            temporal_columns.append(temporal_avg_col)
+            temporal_columns.append(temporal_var_col)
+            df[temporal_avg_col] = pd.Series()
+            df[temporal_var_col] = pd.Series()
+        t = tqdm.tqdm(total = (_nrows - halfhour_interval)*len(input_columns))
+        for i in range(halfhour_interval, len(df)):
+            # if there are any gaps, skip this iteration
+            if df[[*input_columns]].iloc[i-halfhour_interval:i].isna().values.any():
+                t.update(len(input_columns))
+            else:
+                for input_column in input_columns:
+                    temporal_avg_col = input_column + "_prev_avg"
+                    temporal_var_col = input_column + "_prev_var"
+                    t.update(1)
+                    sequence = df[input_column].iloc[i-halfhour_interval:i]
+                    print(sequence.mean())
+                    print(sequence.var())
+                    df.at[i, temporal_avg_col] = sequence.mean()
+                    df.at[i, temporal_var_col] = sequence.var()
+    """
+
+
+    # drop all rows where ustar is not sufficient
+    df = df[df['USTAR'] > 0.2].drop(columns=['USTAR'])
+    #print(f"Dropped {_nrows - len(df)}  rows with USTAR threshold ({len(df)})")
+    
+
+    df = df[df['PPFD_IN'] > 4.0]
+
+    _nrows = len(df)
+
+    
 
     # group into daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
@@ -113,6 +153,7 @@ def prepare_data(site_name : Site, input_columns : list[str], no_split = False, 
     #print(df_X_y.head())
     #df_X_y = df_X_y.drop(columns=['DAY'])
     print(f"Dropped {_nrows - len(df_X_y)} rows from min count filter ({len(df_X_y)})")
+    print(df_X_y.head(100))
 
     # TODO: normalize all data
     # add these columns back at the end
@@ -123,6 +164,7 @@ def prepare_data(site_name : Site, input_columns : list[str], no_split = False, 
 
     # simple train-eval and eval 80/20 split
     train_size = int(len(_df)*0.8)
+    # TODO: modular design to day of year split
     # determine where the eval set starts
     first_eval_year = int(_df["DAY"].iloc[-1][:4]) - (eval_years - 1)
     eval_year_range = [str(y) for y in range(first_eval_year, 2022)]

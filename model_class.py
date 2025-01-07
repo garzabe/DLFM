@@ -10,6 +10,11 @@ class NEPModel(nn.Module, ABC):
     def forward(self, x):
         pass
 
+# TODO: implement Random Forest, XGBoost architectures
+# these don't work in the pytorch framework
+
+# TODO: xLSTM, standard LSTM, 1d CNN
+
 class FirstANN(NEPModel):
     def __init__(self, num_features : int, **kwargs):
         # accepted kwargs: layer_size

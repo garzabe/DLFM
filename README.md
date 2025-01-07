@@ -1,22 +1,15 @@
-This weeks todos:
-- check the quality of photon data. are there significant outliers during nighttime?
-    - with a ppfd threshold of 5, there are only 22 outliers between the hours of 8pm and 4am
-    - ppfd should be fine to use for daytime analysis
-    - visually as well, there are not a lot of outliers that *include* nighttime data
-        - there are some days where ppfd is low nearly all day, so some days might get *excluded*
-- try some different ANN architectures
-  
+
 |Layer dimensions | Avg R-squared |
 | --------------- | ----- |
 |  4          | ? |
 |  6          | 0.495 |
 |  8          | 0.560 |
-|  10         | *0.586* |
+|  10         | 0.586 |
 |  12        | 0.514 |
 |  14         | 0.418 |
 |  20         | 0.483 |
 |  4,4        | 0.481 |
-|  4,6         | **0.671** |
+|  4,6         | 0.671 |
 |  4,8         | 0.560 |
 |  4,10         | -0.004 |
 |  4,12         | -0.002 |
@@ -37,12 +30,6 @@ This weeks todos:
 |  10,4         | 0.643 |
 |  10,6         | 0.629 |
 |  10,8         | 0.631 |
-
-
-
-
-
-
 
 - start lookup up time series predictors
 

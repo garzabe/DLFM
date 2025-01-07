@@ -117,9 +117,12 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     lr_candidates = kwargs.get('lr_candidates', [1e-1, 1e-2, 1e-4, 1e-5])
     batch_size_candidates = kwargs.get('batch_size_candidates', [1, 4, 16, 32, 64, 128])
     input_columns = kwargs.get('input_columns', None)
+    stat_interval=  kwargs.get('stat_interval', None)
+
+    num_features = len(input_columns)*(3 if stat_interval is not None else 1)
 
     # 1. Prepare the data
-    train_data, _ = prepare_data(site, input_columns)
+    train_data, _ = prepare_data(site, input_columns, stat_interval=stat_interval)
     #train_dataloader = DataLoader(train_data, batch_size=64, shuffle=True)
     #test_dataloader = DataLoader(test_data, batch_size=64, shuffle=False)
 
@@ -133,7 +136,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     lr_best = lr_candidates[0]
     max_r2 = 0
     for lr in lr_candidates:
-        r2 = train_kfold(num_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, len(input_columns))
+        r2 = train_kfold(num_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, num_features)
         if r2 > max_r2:
             lr_best = lr
             max_r2 = r2
@@ -141,13 +144,13 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     max_r2 = 0
     bs_best = batch_size_candidates[0]
     for bs in batch_size_candidates:
-        r2 = train_kfold(num_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, len(input_columns))
+        r2 = train_kfold(num_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, num_features)
         if r2 > max_r2:
             max_r2 = r2
             bs_best = bs
 
     # 3. Train with final hparam selections
-    model : nn.Module = model_class(len(input_columns), **kwargs).to(device)
+    model : nn.Module = model_class(num_features, **kwargs).to(device)
     train_loader = DataLoader(train_data, batch_size=bs_best)
     optimizer = torch.optim.SGD(model.parameters(), lr=lr_best)
     for t in range(epochs):
@@ -162,12 +165,13 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     epochs = kwargs.get('epochs', 100)
     site = kwargs.get('site', Site.Me2)
     input_columns = kwargs.get('input_columns', None)
+    stat_interval = kwargs.get('stat_interval', None)
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
-    final_model = train_hparam(model_class, model_args=model_args, num_folds=num_folds, epochs=epochs, input_columns=input_columns)
+    final_model = train_hparam(model_class, model_args=model_args, num_folds=num_folds, epochs=epochs, input_columns=input_columns, stat_interval=stat_interval)
 
     # Evaluate the final model on the evaluation set
-    _, eval_data = prepare_data(site, input_columns)
+    _, eval_data = prepare_data(site, input_columns, stat_interval=stat_interval)
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     r2metric = R2Score(device=device)
