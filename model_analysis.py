@@ -81,7 +81,7 @@ def main():
         'TA_1_1_2'
     ]
     # comparing performance of first ann and two layer ann
-    train_test_eval(DynamicANN, layer_dims=(10, 20), num_folds=5, epochs=50, site=site, input_columns=me2_input_column_set, stat_interval=7)
+    train_test_eval(DynamicANN, layer_dims=(20, 10), num_folds=5, epochs=50, site=site, input_columns=me2_input_column_set, stat_interval=7)
     #first_r2 = train_test_eval(FirstANN)
     #results = [('original', first_r2)]
     """
