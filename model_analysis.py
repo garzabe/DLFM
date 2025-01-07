@@ -48,8 +48,10 @@ def DP_feature_pruning(model_class, *model_args, **kwargs):
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
 def best_vanilla_network_search(site, input_columns, stat_interval=None):
+    # To define a model architecture with a single hidden layer, you must add a comma after the layer dimension in the tuple
+    # or Python will simplify it to an int
     train_test_eval(DynamicANN,
-                    layer_dims=[(1), (4), (8), (10), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
+                    layer_dims=[(1, ), (4, ), (8, ), (10, ), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
                     num_folds=10,
                     epochs=100,
                     site=site,
