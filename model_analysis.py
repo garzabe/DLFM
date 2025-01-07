@@ -45,6 +45,20 @@ def DP_feature_pruning(model_class, *model_args, **kwargs):
 
     # .... still has the same shortcoming as feature addition
 
+# Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
+# we can optionally include multiple stat intervals to search on as well
+def best_vanilla_network_search(site, input_columns, stat_interval=None):
+    train_test_eval(DynamicANN,
+                    layer_dims=[(1), (4), (8), (10), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
+                    num_folds=10,
+                    epochs=100,
+                    site=site,
+                    input_columns=input_columns,
+                    lr=[1e-3, 1e-2, 1e-1],
+                    batch_size=[32,64],
+                    stat_interval=stat_interval)
+
+
 def main():
     site = Site.Me2
     me2_input_column_set = [
@@ -81,7 +95,8 @@ def main():
         'TA_1_1_2'
     ]
     # comparing performance of first ann and two layer ann
-    train_test_eval(DynamicANN, layer_dims=[(5,5), (10, 10)], num_folds=5, epochs=[50, 100], site=site, input_columns=me2_input_column_set, stat_interval=[3,7,14])
+    #train_test_eval(DynamicANN, layer_dims=[(5,5), (10, 10)], num_folds=5, epochs=[50, 100], site=site, input_columns=me2_input_column_set, stat_interval=[3,7,14])
+    best_vanilla_network_search(site, me2_input_column_set)
     #first_r2 = train_test_eval(FirstANN)
     #results = [('original', first_r2)]
     """
