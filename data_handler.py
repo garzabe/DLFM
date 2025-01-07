@@ -70,9 +70,10 @@ def get_data(site : Site):
 
     return data
 
-def prepare_data(site_name : Site, input_columns : list[str], no_split = False, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_data(site_name : Site, no_split = False, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
     df = get_data(site_name)
     stat_interval = kwargs.get('stat_interval', None)
+    input_columns = kwargs.get('input_columns', df.columns)
 
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'

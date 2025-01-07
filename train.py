@@ -117,12 +117,14 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     lr_candidates = kwargs.get('lr_candidates', [1e-1, 1e-2, 1e-4, 1e-5])
     batch_size_candidates = kwargs.get('batch_size_candidates', [1, 4, 16, 32, 64, 128])
     input_columns = kwargs.get('input_columns', None)
-    stat_interval=  kwargs.get('stat_interval', None)
+    stat_interval =  kwargs.get('stat_interval', None)
+    layer_dims = kwargs.get('layer_dims', (4,6))
+    activation_fn = kwargs.get('activation_fn', nn.ReLU)
 
     num_features = len(input_columns)*(3 if stat_interval is not None else 1)
 
     # 1. Prepare the data
-    train_data, _ = prepare_data(site, input_columns, stat_interval=stat_interval)
+    train_data, _ = prepare_data(site, **kwargs)
     #train_dataloader = DataLoader(train_data, batch_size=64, shuffle=True)
     #test_dataloader = DataLoader(test_data, batch_size=64, shuffle=False)
 
@@ -136,7 +138,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     lr_best = lr_candidates[0]
     max_r2 = 0
     for lr in lr_candidates:
-        r2 = train_kfold(num_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, num_features)
+        r2 = train_kfold(num_folds, model_class, lr, 64, epochs, loss_fn, train_data, device, num_features, layer_dims=layer_dims, activation_fn=activation_fn)
         if r2 > max_r2:
             lr_best = lr
             max_r2 = r2
@@ -144,13 +146,13 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     max_r2 = 0
     bs_best = batch_size_candidates[0]
     for bs in batch_size_candidates:
-        r2 = train_kfold(num_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, num_features)
+        r2 = train_kfold(num_folds, model_class, lr_best, bs, epochs, loss_fn, train_data, device, num_features, layer_dims=layer_dims, activation_fn=activation_fn)
         if r2 > max_r2:
             max_r2 = r2
             bs_best = bs
 
     # 3. Train with final hparam selections
-    model : nn.Module = model_class(num_features, **kwargs).to(device)
+    model : nn.Module = model_class(num_features, layer_dims=layer_dims, activation_fn=activation_fn).to(device)
     train_loader = DataLoader(train_data, batch_size=bs_best)
     optimizer = torch.optim.SGD(model.parameters(), lr=lr_best)
     for t in range(epochs):
@@ -160,18 +162,19 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
 
 
 def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
-    model_args = kwargs.get('model_args', [])
     num_folds = kwargs.get('num_folds', 5)
     epochs = kwargs.get('epochs', 100)
     site = kwargs.get('site', Site.Me2)
     input_columns = kwargs.get('input_columns', None)
     stat_interval = kwargs.get('stat_interval', None)
+    layer_dims = kwargs.get('layer_dims', (4,6))
+    activation_fn = kwargs.get('activation_fn', nn.ReLU)
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
-    final_model = train_hparam(model_class, model_args=model_args, num_folds=num_folds, epochs=epochs, input_columns=input_columns, stat_interval=stat_interval)
+    final_model = train_hparam(model_class, **kwargs)
 
     # Evaluate the final model on the evaluation set
-    _, eval_data = prepare_data(site, input_columns, stat_interval=stat_interval)
+    _, eval_data = prepare_data(site, **kwargs)
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     r2metric = R2Score(device=device)
@@ -180,8 +183,8 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     # write the results to an output file
     dt = datetime.datetime.now()
     with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.txt", 'w') as f:
-        f.write(f'Layer Architecture: {model_args[0]}\n')
-        f.write(f'Activation: {model_args[1]}\n')
+        f.write(f'Layer Architecture: {layer_dims}\n')
+        f.write(f'Activation: {activation_fn}\n')
         f.write(f'Folds: {num_folds}\n')
         f.write(f'Epochs: {epochs}\n\n')
         f.write(f'{final_model}')
