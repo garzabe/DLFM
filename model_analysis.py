@@ -46,8 +46,11 @@ def DP_feature_pruning(model_class, *model_args, **kwargs):
     # .... still has the same shortcoming as feature addition
 
 def test_tte():
+    simple_cols = ['P', 'PPFD_IN']
     # This should take little time to run
-    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=10, site=Site.Me2, input_columns=['SWC_1_7_1', 'PPFD_IN'], lr=1e-2, batch_size=64)
+    #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
+    # test time series data preparation and RNN predictor model
+    train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -103,9 +106,9 @@ def main():
 
     #best_vanilla_network_search(site, me2_input_column_set)
 
-    #test_tte()
-    
-    train_test_eval(LSTM, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2)
+    test_tte()
+
+    #train_test_eval(LSTM, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2)
 
                 
 if __name__=="__main__":

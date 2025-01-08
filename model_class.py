@@ -68,6 +68,7 @@ class RNN(NEPModel):
         self.linear = nn.Linear(in_features=hidden_state_size, out_features=1)
     
     def forward(self, x):
+        print(x.shape)
         _batch_size = x.shape[0]
         h0 = torch.zeros(1, _batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
         # we are only interested in the final output (at the moment)

@@ -126,7 +126,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     activation_fn = kwargs.get('activation_fn', nn.ReLU)
     lr = kwargs.get('lr', 1e-2)
     batch_size = kwargs.get('batch_size', 64)
-    stat_interval =  kwargs.get('stat_interval', None)
+    stat_interval =  kwargs.pop('stat_interval', None)
 
     num_features = len(input_columns)*(3 if stat_interval is not None else 1)
 
@@ -159,7 +159,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     data_best = None
     max_r2 = -np.inf
     for data_candidate in data_candidates:
-        train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], input_columns=input_columns)
+        train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], **kwargs)
         for candidate in candidates:
             print(f"""Hyperparameters:
 Stat Interval: {data_candidate['stat_interval']}
@@ -182,7 +182,7 @@ Activation Function: {candidate['activation_fn'].__name__}
                 max_r2 = r2
 
     # 3. Train with final hparam selections
-    train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], input_columns=input_columns)
+    train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
     model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn']).to(device)
     train_loader = DataLoader(train_data, batch_size=best['batch_size'])
     optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
@@ -200,7 +200,7 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     final_model, hparams = train_hparam(model_class, **kwargs)
 
     # Evaluate the final model on the evaluation set
-    _, eval_data = prepare_data(site, stat_interval=hparams['stat_interval'], input_columns=input_columns)
+    _, eval_data = prepare_data(site, stat_interval=hparams['stat_interval'], **kwargs)
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     r2metric = R2Score(device=device)
