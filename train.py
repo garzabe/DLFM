@@ -72,7 +72,7 @@ def train_kfold(num_folds : int,
     for fold in range(num_folds):
         print(f"Fold {fold+1}: ")
         # set up next model
-        model : nn.Module = model_class(num_features, **model_kwargs).to(device)
+        model : nn.Module = model_class(num_features, batch_size=bs, **model_kwargs).to(device)
         if fold==0:
             print(model)
         # start with the last year as the first validation year and work our way back with each fold
@@ -130,10 +130,6 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
 
     num_features = len(input_columns)*(3 if stat_interval is not None else 1)
 
-    
-    #train_dataloader = DataLoader(train_data, batch_size=64, shuffle=True)
-    #test_dataloader = DataLoader(test_data, batch_size=64, shuffle=False)
-
     # 2. Initialize the model
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     loss_fn = nn.MSELoss()
@@ -146,7 +142,6 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     batch_size_list = batch_size if isinstance(batch_size, list) else [batch_size]
     stat_interval_list = stat_interval if isinstance(stat_interval, list) else [stat_interval]
 
-
     data_candidates = [{'stat_interval': si} for si in stat_interval_list]
     candidates = []
     for e, ld, af, l, bs, in itertools.product(epochs_list, layer_dims_list, activation_fn_list, lr_list, batch_size_list):
@@ -154,7 +149,6 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
         candidates.append(candidate)
 
     print(f"Running K-Fold Cross Validation on {len(candidates)*len(data_candidates)} different hyperparameter configurations")
-    # let's just be greedy and tune each one independently
     best = None
     data_best = None
     max_r2 = -np.inf
@@ -183,7 +177,7 @@ Activation Function: {candidate['activation_fn'].__name__}
 
     # 3. Train with final hparam selections
     train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
-    model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn']).to(device)
+    model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn'], batch_size=best['batch_size']).to(device)
     train_loader = DataLoader(train_data, batch_size=best['batch_size'])
     optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
     for t in range(best['epochs']):
@@ -200,6 +194,7 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     final_model, hparams = train_hparam(model_class, **kwargs)
 
     # Evaluate the final model on the evaluation set
+    kwargs.pop('stat_interval', None)
     _, eval_data = prepare_data(site, stat_interval=hparams['stat_interval'], **kwargs)
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")

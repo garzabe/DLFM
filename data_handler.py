@@ -4,6 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from abc import ABC, abstractmethod
 import tqdm
+import bisect
 
 Site = Enum('Site', ['Me2', 'Me6'])
 
@@ -57,9 +58,11 @@ class AmeriFLUXLinearDataset(Dataset):
         return self.labels.to_numpy()
     
 class AmeriFLUXSequenceDataset(Dataset):
-    def __init__(self, X, y):
+    def __init__(self, X, y, years_idx):
         self.inputs = X
         self.labels = y
+        self.years_idx = years_idx
+        self.years = np.unique(self.years_idx)
 
     def __len__(self):
         return len(self.labels)
@@ -68,6 +71,15 @@ class AmeriFLUXSequenceDataset(Dataset):
         input = self.inputs[idx]
         label = self.labels[idx]
         return input, label
+    
+    def get_train_test_idx(self, delta_year : int) -> tuple[list[int], list[int]]:
+        if delta_year > len(self.years):
+            print(f"Warning: delta_year ({delta_year}) is greater than the number of years in the dataset ({len(self.years)})")
+            return None, None
+        year = self.years[-1-delta_year]
+        year_lo = bisect.bisect(self.years_idx, year-1)
+        year_hi = bisect.bisect(self.years_idx, year)
+        return list(range(0, year_lo)) + list(range(year_hi, len(self.years_idx))), list(range(year_lo, year_hi))
 
 def get_data(site : Site):
     if not isinstance(site, Site):
@@ -163,7 +175,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
     
 
-def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_length : int) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_length : int, eval_years : int = 2) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
     if sequence_length < 1:
         raise ValueError(f"Error: The sequence length cannot be less than 1 ({sequence_length})")
     df = get_data(site)
@@ -179,7 +191,13 @@ def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_len
 
     X_dataset = []
     y_dataset = []
+    years_idx = []
     print("Building dataset")
+    # TODO: is there a way to hack the rolling window to quicky generate the sequence data we need?
+    #print(pd.DataFrame(df.rolling(window=sequence_length)))
+    # This doesn't work
+    #print(pd.DataFrame(df.rolling(window=sequence_length)).apply(lambda r: r.dropna(ignore_index=True), axis=1))
+    # perhaps iterate over columns and generate the sequences for each column and ~~combine~~
     t = tqdm.tqdm(total = len(df)-sequence_length)
     for i in range(len(df)-sequence_length):
         t.update(1)
@@ -187,17 +205,24 @@ def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_len
         if df.iloc[i:i+sequence_length].isna().values.any() or \
             (df['USTAR'] <= 0.2).iloc[i:i+sequence_length].any():
             continue
-        df_seq = df.iloc[i:i+sequence_length].drop(columns=['DATETIME', 'USTAR'])
+        df_seq = df.iloc[i:i+sequence_length].drop(columns=[ 'USTAR'])
+        year = df_seq['DATETIME'].dt.year.iloc[-1]
+        df_seq = df_seq.drop(columns=['DATETIME'])
 
         X_seq = df_seq.drop(columns=["NEE"]).to_numpy(dtype=np.float32)
         #print(X_seq)
         y = df_seq[["NEE"]].iloc[-1].to_numpy(dtype=np.float32)
         X_dataset.append(X_seq)
         y_dataset.append(y)
+        years_idx.append(year)
     print(f"The final size of the dataset is {len(X_dataset)}")
-    train_size = int(len(X_dataset)*0.8)
-    X_train = np.array(X_dataset[0:train_size])
-    y_train = np.array(y_dataset[0:train_size])
-    X_eval = np.array(y_dataset[train_size:])
-    y_eval = np.array(y_dataset[train_size:])
-    return AmeriFLUXSequenceDataset(X_train, y_train), AmeriFLUXSequenceDataset(X_eval, y_eval)
+    years_ref = np.unique(years_idx)
+    years_eval = years_ref[-eval_years:]
+    eval_idx = bisect.bisect(years_idx, years_eval[0])
+    X_train = np.array(X_dataset[0:eval_idx])
+    y_train = np.array(y_dataset[0:eval_idx])
+    X_eval = np.array(X_dataset[eval_idx:])
+    y_eval = np.array(y_dataset[eval_idx:])
+    train_years_idx = years_idx[0:eval_idx]
+    eval_years_idx = years_idx[eval_idx:]
+    return AmeriFLUXSequenceDataset(X_train, y_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, eval_years_idx)

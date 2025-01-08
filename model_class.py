@@ -61,18 +61,18 @@ class RNN(NEPModel):
         hidden_state_size = kwargs.get('hidden_state_size', 8)
         batch_size = kwargs.get("batch_size", 1)
 
-        self.h0 = torch.zeros(1, batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
+        self.h0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
 
         self.rnn = nn.RNN(num_features, hidden_state_size, 1, batch_first=True)
         self.relu = nn.ReLU()
         self.linear = nn.Linear(in_features=hidden_state_size, out_features=1)
     
     def forward(self, x):
-        print(x.shape)
+        # batch size is not necessarily batch_size (i.e. the last batch is less than that)
         _batch_size = x.shape[0]
-        h0 = torch.zeros(1, _batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
+        _h0 = self.h0.repeat(1, _batch_size, 1)
         # we are only interested in the final output (at the moment)
-        _, hn = self.rnn(x, h0)
+        _, hn = self.rnn(x, _h0)
         _hn = self.relu(hn)
         return self.linear(_hn)[0]
     
@@ -86,16 +86,18 @@ class LSTM(NEPModel):
         dropout = kwargs.get('dropout', 0.0)
         batch_size = kwargs.get("batch_size", 1)
 
-        self.h0 = torch.zeros(1, batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
-        self.c0 = torch.zeros(1, batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
+        self.h0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
+        self.c0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
 
         self.lstm = nn.LSTM(num_features, hidden_state_size, num_layers=num_layers, dropout=dropout, batch_first=True)
         self.relu = nn.ReLU()
         self.linear = nn.Linear(in_features=hidden_state_size, out_features=1)
     
     def forward(self, x):
-        print(x.shape)
-        _, (_x, _) = self.lstm(x, (self.h0, self.c0))
+        _batch_size = x.shape[0]
+        _h0 = self.h0.repeat(1, _batch_size, 1)
+        _c0 = self.c0.repeat(1, _batch_size, 1)
+        _, (_x, _) = self.lstm(x, (_h0, _c0))
         _x = self.relu(_x)
         y = self.linear(_x)
-        return y
+        return y[0]
