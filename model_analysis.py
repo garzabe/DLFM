@@ -63,7 +63,7 @@ def best_vanilla_network_search(site, input_columns, stat_interval=None):
                     epochs=100,
                     site=site,
                     input_columns=input_columns,
-                    lr=[1e-3, 1e-2, 1e-1],
+                    lr=[1e-3, 1e-2],
                     batch_size=[32,64],
                     stat_interval=stat_interval)
 
