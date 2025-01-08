@@ -49,6 +49,13 @@ class AmeriFLUXLinearDataset(Dataset):
         label : np.ndarray = np.array([self.labels.iloc[idx]], dtype=np.float32)
         return input, label
     
+    # returns the input data as a numpy array for the use with ML packages other than pytorch
+    def get_X(self):
+        return self.inputs.to_numpy()
+    
+    def get_y(self):
+        return self.labels.to_numpy()
+    
 class AmeriFLUXSequenceDataset(Dataset):
     def __init__(self, X, y):
         self.inputs = X
@@ -75,10 +82,16 @@ def get_data(site : Site):
 
     return data
 
-def prepare_data(site_name : Site, no_split = False, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
     df = get_data(site_name)
     stat_interval = kwargs.get('stat_interval', None)
     input_columns = kwargs.get('input_columns', df.columns)
+    time_series = kwargs.get('time_series', False)
+    sequence_length = kwargs.get('sequence_length', -1)
+
+    # if we want time series data, then jump to the time series data preparator instead
+    if time_series:
+        return prepare_timeseries_data(site_name, input_columns, sequence_length)
 
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
@@ -88,43 +101,10 @@ def prepare_data(site_name : Site, no_split = False, eval_years : int = 2, **kwa
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
     if stat_interval is not None:
-        rolling_columns = [col + '_rolling_var' for col in input_columns] + [col + '_rolling_avg' for col in input_columns]
-
         for col in input_columns:
             rolling_series = df[col].rolling(window=48*stat_interval, min_periods=5*stat_interval)
             df[col+'_rolling_var'] = rolling_series.var()
             df[col+'_rolling_avg'] = rolling_series.mean()
-
-
-    """
-    _nrows = len(df)
-    temporal_columns = []
-    if stat_interval is not None:
-        halfhour_interval = stat_interval*48
-        print("Adding temporal data...")
-        for input_column in input_columns:
-            temporal_avg_col = input_column + "_prev_avg"
-            temporal_var_col = input_column + '_prev_var'
-            temporal_columns.append(temporal_avg_col)
-            temporal_columns.append(temporal_var_col)
-            df[temporal_avg_col] = pd.Series()
-            df[temporal_var_col] = pd.Series()
-        t = tqdm.tqdm(total = (_nrows - halfhour_interval)*len(input_columns))
-        for i in range(halfhour_interval, len(df)):
-            # if there are any gaps, skip this iteration
-            if df[[*input_columns]].iloc[i-halfhour_interval:i].isna().values.any():
-                t.update(len(input_columns))
-            else:
-                for input_column in input_columns:
-                    temporal_avg_col = input_column + "_prev_avg"
-                    temporal_var_col = input_column + "_prev_var"
-                    t.update(1)
-                    sequence = df[input_column].iloc[i-halfhour_interval:i]
-                    print(sequence.mean())
-                    print(sequence.var())
-                    df.at[i, temporal_avg_col] = sequence.mean()
-                    df.at[i, temporal_var_col] = sequence.var()
-    """
 
 
     # drop all rows where ustar is not sufficient
@@ -179,56 +159,36 @@ def prepare_data(site_name : Site, no_split = False, eval_years : int = 2, **kwa
     print(f"The training set has {len(_df)} entries")
     print(f"The eval set has {len(_df_eval)} entries")
 
-    ## TODO: remove this, we are no longer using default train test splitting
-    # split in to train, test, validation
-    #if not no_split:
-    #    df_train, df_test = train_test_split(_df, test_size=0.2)
-    #    print(f"The training set has {len(df_train)} entries, and the test set has {len(df_test)} entries")
-    #else:
-    #    df_train = _df
-    #    df_test = None
-    #df_train = _df
-    #return AmeriFLUXDataset(df_train), AmeriFLUXDataset(df_test) if df_test is not None else None
+  
     return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
     
 
-def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_length : int, no_split = False) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_length : int) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+    if sequence_length < 1:
+        raise ValueError(f"Error: The sequence length cannot be less than 1 ({sequence_length})")
     df = get_data(site)
-
-    _nrows = len(df)
-    # drop all rows where ustar is not sufficient
-    df = df[df['USTAR'] > 0.2]
-    #print(f"Dropped {_nrows - len(df)}  rows with USTAR threshold ({len(df)})")
-    
-
-    # remove daylight hours?
-    #df = df[df['PPFD_IN'] > 4.0]
-
-    _nrows = len(df)
 
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
 
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format='%Y%m%d%H%M')
     if input_columns is not None:
-        df = df[['DATETIME', *input_columns, target_col]]
+        df = df[['DATETIME', *input_columns, 'USTAR', target_col]]
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
 
     X_dataset = []
     y_dataset = []
-    # TODO: create the sequences for time-series predictors
     print("Building dataset")
     t = tqdm.tqdm(total = len(df)-sequence_length)
     for i in range(len(df)-sequence_length):
         t.update(1)
-        # if there are any gaps, skip this iteration
-        if df.iloc[i:i+sequence_length].isna().values.any():
+        # if there are any gaps or bad readings, skip this iteration
+        if df.iloc[i:i+sequence_length].isna().values.any() or \
+            (df['USTAR'] <= 0.2).iloc[i:i+sequence_length].any():
             continue
-        df_seq = df.iloc[i:i+sequence_length].dropna().drop(columns=['DATETIME'])
-        #t_0 = df_seq["DATETIME"].iloc[0]
-        # get time difference from t_0 in minutes, these will be our new columns?
-        #delta_t = (df_seq["DATETIME"] - t_0).apply(lambda td: td.days*48 + td.seconds // 60)
+        df_seq = df.iloc[i:i+sequence_length].drop(columns=['DATETIME', 'USTAR'])
+
         X_seq = df_seq.drop(columns=["NEE"]).to_numpy(dtype=np.float32)
         #print(X_seq)
         y = df_seq[["NEE"]].iloc[-1].to_numpy(dtype=np.float32)

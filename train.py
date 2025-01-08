@@ -212,7 +212,7 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         f.write(f'Layer Architecture: {hparams["layer_dims"]}\n')
         f.write(f'Activation: {hparams["activation_fn"].__name__}\n')
         f.write(f'Learning Rate: {hparams["lr"]}\n')
-        f.write(f'Batch Size: {hparams["bs"]}\n')
+        f.write(f'Batch Size: {hparams["batch_size"]}\n')
         f.write(f'Folds: {num_folds}\n')
         f.write(f'Epochs: {hparams["epochs"]}\n\n')
         f.write(f'{final_model}')

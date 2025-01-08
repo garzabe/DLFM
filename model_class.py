@@ -14,6 +14,7 @@ class NEPModel(nn.Module, ABC):
 # these don't work in the pytorch framework
 
 # TODO: xLSTM, standard LSTM, 1d CNN
+# LSTM, RNN, xLSTM, CNN, 
 
 class FirstANN(NEPModel):
     def __init__(self, num_features : int, **kwargs):
@@ -55,11 +56,14 @@ class DynamicANN(NEPModel):
         return self.stack(x)
 
 class RNN(NEPModel):
-    def __init__(self):
+    def __init__(self, num_features : int, **kwargs):
         super().__init__()
-        hidden_state_size = 8
-        global input_column_set
-        self.rnn = nn.RNN(len(input_column_set), hidden_state_size, 1, batch_first=True)
+        hidden_state_size = kwargs.get('hidden_state_size', 8)
+        batch_size = kwargs.get("batch_size", 1)
+
+        self.h0 = torch.zeros(1, batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
+
+        self.rnn = nn.RNN(num_features, hidden_state_size, 1, batch_first=True)
         self.relu = nn.ReLU()
         self.linear = nn.Linear(in_features=hidden_state_size, out_features=1)
     
@@ -70,3 +74,27 @@ class RNN(NEPModel):
         _, hn = self.rnn(x, h0)
         _hn = self.relu(hn)
         return self.linear(_hn)[0]
+    
+
+class LSTM(NEPModel):
+    def __init__(self, num_features : int, **kwargs):
+        super().__init__()
+
+        hidden_state_size = kwargs.get('hidden_state_size', 8)
+        num_layers = kwargs.get('num_layers', 1)
+        dropout = kwargs.get('dropout', 0.0)
+        batch_size = kwargs.get("batch_size", 1)
+
+        self.h0 = torch.zeros(1, batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
+        self.c0 = torch.zeros(1, batch_size, 8).to(("cuda" if torch.cuda.is_available() else "cpu"))
+
+        self.lstm = nn.LSTM(num_features, hidden_state_size, num_layers=num_layers, dropout=dropout, batch_first=True)
+        self.relu = nn.ReLU()
+        self.linear = nn.Linear(in_features=hidden_state_size, out_features=1)
+    
+    def forward(self, x):
+        print(x.shape)
+        _, (_x, _) = self.lstm(x, (self.h0, self.c0))
+        _x = self.relu(_x)
+        y = self.linear(_x)
+        return y

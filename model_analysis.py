@@ -2,7 +2,7 @@ from torch import nn
 
 from data_handler import AmeriFLUXDataset, prepare_data, Site
 from train import train_test_eval
-from model_class import FirstANN, DynamicANN, RNN
+from model_class import FirstANN, DynamicANN, RNN, LSTM
 
 
 """
@@ -44,6 +44,10 @@ def DP_feature_pruning(model_class, *model_args, **kwargs):
     site = kwargs.get('site', Site.Me2)
 
     # .... still has the same shortcoming as feature addition
+
+def test_tte():
+    # This should take little time to run
+    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=10, site=Site.Me2, input_columns=['SWC_1_7_1', 'PPFD_IN'], lr=1e-2, batch_size=64)
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -96,27 +100,13 @@ def main():
         'WS',
         'TA_1_1_2'
     ]
-    # comparing performance of first ann and two layer ann
-    #train_test_eval(DynamicANN, layer_dims=[(5,5), (10, 10)], num_folds=5, epochs=[50, 100], site=site, input_columns=me2_input_column_set, stat_interval=[3,7,14])
-    best_vanilla_network_search(site, me2_input_column_set)
-    #first_r2 = train_test_eval(FirstANN)
-    #results = [('original', first_r2)]
-    """
-    layer_sizes = [4,6,8,10,12,14,20]
-    for l1 in layer_sizes:
-        arch = [l1]
-        r2 = train_test_eval(DynamicANN, [arch, nn.ReLU])
-        with open('output.txt', 'a+') as f:
-                dt = datetime.datetime.now()
-                f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")        
-    for l1 in layer_sizes:
-        for l2 in layer_sizes:
-            arch = [l1, l2]
-            r2 = train_test_eval(DynamicANN, [arch, nn.ReLU])
-            with open('output.txt', 'a+') as f:
-                dt = datetime.datetime.now()
-                f.write(f"{dt.year}-{dt.month:02}-{dt.day:02} {dt.hour:02}:{dt.minute:02}:{dt.second:02} : Architecture {arch} R-Squared {r2:.4f}\n")        
-    """
+
+    #best_vanilla_network_search(site, me2_input_column_set)
+
+    #test_tte()
+    
+    train_test_eval(LSTM, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2)
+
                 
 if __name__=="__main__":
     main()
