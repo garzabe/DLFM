@@ -113,6 +113,7 @@ def train_kfold(num_folds : int,
     return avg_r2
 
 
+
 def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     # Accepted kwargs
     
@@ -149,6 +150,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
         candidates.append(candidate)
 
     print(f"Running K-Fold Cross Validation on {len(candidates)*len(data_candidates)} different hyperparameter configurations")
+    history = []
     best = None
     data_best = None
     max_r2 = -np.inf
@@ -170,10 +172,13 @@ Activation Function: {candidate['activation_fn'].__name__}
                             loss_fn, train_data, device, num_features,
                             layer_dims=candidate['layer_dims'],
                             activation_fn=candidate['activation_fn'])
+            history.append(candidate | data_candidate)
+            history[-1]['r2'] = r2
             if r2 > max_r2:
                 best = candidate
                 data_best = data_candidate
                 max_r2 = r2
+    best['r2'] = max_r2
 
     # 3. Train with final hparam selections
     train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
@@ -183,7 +188,39 @@ Activation Function: {candidate['activation_fn'].__name__}
     for t in range(best['epochs']):
             print(f"Epoch {t+1}")
             train(train_loader, model, loss_fn, optimizer, device)
-    return model, best | data_best
+    return model, best | data_best, history
+
+def feature_pruning(model_class : Type[nn.Module], **kwargs) -> list[str]:
+    input_columns : list[str] = kwargs.get('input_columns', None)
+    if input_columns is None:
+        raise ValueError("feature_pruning requires the input_columns argument as an initial set of features")
+    # TODO: prune until we no longer improve r-squared?
+    # or prune a specific # of features
+    # or test every combination of columns O(2^n) and pick the best one
+    # get initial model performance
+    _, results, _ = train_hparam(model_class, **kwargs)
+    max_r2 = results['r2']
+    kwargs.pop('input_columns')
+    pruned_columns = input_columns
+    pruning = True
+    while pruning:
+        new_columns = pruned_columns.copy()
+        for pruned_idx in range(len(pruned_columns)):
+            _candidate_columns = pruned_columns[0:pruned_idx] + pruned_columns[pruned_idx+1:]
+            _, results, _ = train_hparam(model_class, input_columns=_candidate_columns, **kwargs)
+            _r2 = results['r2']
+            if _r2 > max_r2:
+                new_columns = _candidate_columns
+                max_r2 = _r2
+        # if we did not find a better set of columns, then end the pruning process
+        if len(new_columns) == len(pruned_columns):
+            pruning=False
+        else:
+            pruned_columns = new_columns
+    return pruned_columns
+    
+
+
 
 def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     num_folds = kwargs.get('num_folds', 5)
@@ -191,7 +228,7 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     input_columns=kwargs.get('input_columns', [])
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
-    final_model, hparams = train_hparam(model_class, **kwargs)
+    final_model, hparams, history = train_hparam(model_class, **kwargs)
 
     # Evaluate the final model on the evaluation set
     kwargs.pop('stat_interval', None)
@@ -203,15 +240,26 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
 
     # write the results to an output file
     dt = datetime.datetime.now()
-    with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.txt", 'w') as f:
-        f.write(f'Layer Architecture: {hparams["layer_dims"]}\n')
-        f.write(f'Activation: {hparams["activation_fn"].__name__}\n')
-        f.write(f'Learning Rate: {hparams["lr"]}\n')
-        f.write(f'Batch Size: {hparams["batch_size"]}\n')
-        f.write(f'Folds: {num_folds}\n')
-        f.write(f'Epochs: {hparams["epochs"]}\n\n')
-        f.write(f'{final_model}')
+    with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.md", 'w') as f:
+        f.write("### K-Fold Cross-Validation History\n\n")
+        f.write(f"Folds: {num_folds}\n\n")
+
+        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Average R-Squared |\n')
+        f.write('| --- | --- | --- | --- | --- | --- |\n')
+        for candidate in history:
+            f.write(f"| {candidate['layer_dims']} | {candidate['activation_fn'].__name__} | {candidate['lr']} | {candidate['batch_size']} | {candidate['epochs']} | {candidate['r2']:.4f} |\n")
+
+        f.write('\n')
+        f.write("### Best Model Evaluation\n\n")
+        model_str_lines = str(final_model).splitlines()
+        f.write('~~~\n')
+        for line in model_str_lines[:-1]:
+            f.write(f'{line}\n\n')
+        f.write(f'{model_str_lines[-1]}\n~~~')
         f.write('\n\n')
-        f.write(f'Evaluation r-squared: {r2eval}\n')
+
+        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Evaluation R-Squared |\n')
+        f.write('| --- | --- | --- | --- | --- | --- |\n')
+        f.write(f"| {hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {r2eval:.4f} |\n")
     
     return r2eval

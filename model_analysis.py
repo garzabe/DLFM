@@ -48,11 +48,11 @@ def DP_feature_pruning(model_class, *model_args, **kwargs):
 def test_tte():
     simple_cols = ['P', 'PPFD_IN']
     # This should take little time to run
-    #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
+    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
     #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=7)
     # test time series data preparation and RNN predictor model
     #train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
-    train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
+    #train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -106,9 +106,12 @@ def main():
         'TA_1_1_2'
     ]
 
-    #best_vanilla_network_search(site, me2_input_column_set)
+    best_vanilla_network_search(site, me2_input_column_set)
+    best_vanilla_network_search(site, me2_input_column_set, stat_interval=7)
+    best_vanilla_network_search(site, me2_input_column_set, stat_interval=14)
+    best_vanilla_network_search(site, me2_input_column_set, stat_interval=30)
 
-    test_tte()
+    #test_tte()
 
     #train_test_eval(LSTM, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2)
 
