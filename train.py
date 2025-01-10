@@ -172,7 +172,7 @@ Activation Function: {candidate['activation_fn'].__name__}
                             loss_fn, train_data, device, num_features,
                             layer_dims=candidate['layer_dims'],
                             activation_fn=candidate['activation_fn'])
-            history.append(candidate | data_candidate)
+            history.append(candidate | data_candidate | {'train_size' : len(train_data)})
             history[-1]['r2'] = r2
             if r2 > max_r2:
                 best = candidate
@@ -242,12 +242,13 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     dt = datetime.datetime.now()
     with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.md", 'w') as f:
         f.write("### K-Fold Cross-Validation History\n\n")
+        f.write(f'## {final_model.__class__.__name__}')
         f.write(f"Folds: {num_folds}\n\n")
 
-        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Average R-Squared |\n')
-        f.write('| --- | --- | --- | --- | --- | --- |\n')
+        f.write('| Training Set Size | Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Average R-Squared |\n')
+        f.write('| --- | --- | --- | --- | --- | --- | --- | --- |\n')
         for candidate in history:
-            f.write(f"| {candidate['layer_dims']} | {candidate['activation_fn'].__name__} | {candidate['lr']} | {candidate['batch_size']} | {candidate['epochs']} | {candidate['r2']:.4f} |\n")
+            f.write(f"| {candidate['train_size']} | {candidate['layer_dims']} | {candidate['activation_fn'].__name__} | {candidate['lr']} | {candidate['batch_size']} | {candidate['epochs']} | {candidate['stat_interval']} | {candidate['r2']:.4f} |\n")
 
         f.write('\n')
         f.write("### Best Model Evaluation\n\n")
@@ -258,8 +259,8 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         f.write(f'{model_str_lines[-1]}\n~~~')
         f.write('\n\n')
 
-        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Evaluation R-Squared |\n')
-        f.write('| --- | --- | --- | --- | --- | --- |\n')
-        f.write(f"| {hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {r2eval:.4f} |\n")
+        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Evaluation R-Squared |\n')
+        f.write('| --- | --- | --- | --- | --- | --- | --- |\n')
+        f.write(f"| {hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {candidate['stat_interval']} | {r2eval:.4f} |\n")
     
     return r2eval
