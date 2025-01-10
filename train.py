@@ -129,8 +129,6 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     batch_size = kwargs.get('batch_size', 64)
     stat_interval =  kwargs.pop('stat_interval', None)
 
-    num_features = len(input_columns)*(3 if stat_interval is not None else 1)
-
     # 2. Initialize the model
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     loss_fn = nn.MSELoss()
@@ -156,6 +154,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     max_r2 = -np.inf
     for data_candidate in data_candidates:
         train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], **kwargs)
+        num_features = len(input_columns)*(3 if data_candidate['stat_interval'] is not None else 1)
         for candidate in candidates:
             print(f"""Hyperparameters:
 Stat Interval: {data_candidate['stat_interval']}
