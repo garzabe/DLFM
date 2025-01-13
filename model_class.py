@@ -38,9 +38,7 @@ class DynamicANN(NEPModel):
         layer_dims = kwargs.get('layer_dims', (4,6))
         activation_fn = kwargs.get('activation_fn', nn.ReLU)
         activation_args = kwargs.get('activation_args', [])
-
-        print("Initializing module")
-
+        
         super().__init__()
         sequential_layers = [
             nn.Linear(in_features=num_features, out_features=layer_dims[0]),

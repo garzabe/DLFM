@@ -180,7 +180,9 @@ Activation Function: {candidate['activation_fn'].__name__}
     best['r2'] = max_r2
 
     # 3. Train with final hparam selections
+    print("Training the best performing model on the entire training set")
     train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
+    num_features = len(input_columns)*(3 if data_best['stat_interval'] is not None else 1)
     model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn'], batch_size=best['batch_size']).to(device)
     train_loader = DataLoader(train_data, batch_size=best['batch_size'])
     optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])

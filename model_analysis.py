@@ -49,7 +49,7 @@ def test_tte():
     simple_cols = ['P', 'PPFD_IN']
     # This should take little time to run
     train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
-    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[7,14])
+    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
     # test time series data preparation and RNN predictor model
     #train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
     #train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
