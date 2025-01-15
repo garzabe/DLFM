@@ -7,3 +7,4 @@ AmeriFLUX Data
 .venv
 output.txt
 training_results*
+pruning_results*
