@@ -71,6 +71,9 @@ class AmeriFLUXSequenceDataset(Dataset):
         input = self.inputs[idx]
         label = self.labels[idx]
         return input, label
+
+    def get_num_years(self):
+        return len(self.years)
     
     def get_train_test_idx(self, delta_year : int) -> tuple[list[int], list[int]]:
         if delta_year > len(self.years):
@@ -93,6 +96,12 @@ def get_data(site : Site):
     data = pd.read_csv(filepath, header=2).replace(-9999, np.nan)
 
     return data
+
+def get_site_vars(site : Site):
+    if not isinstance(site, Site):
+        raise ValueError("the provided site is invali")
+    data = get_data(site)
+    return data.columns.to_list()
 
 def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
     df = get_data(site_name)
@@ -128,8 +137,6 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
 
     _nrows = len(df)
 
-    
-
     # group into daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
     df['DAY'] = df['DATETIME'].apply(lambda dt: f"{dt.year:04}{dt.month:02}{dt.day:02}")
@@ -150,7 +157,9 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     df_X_y = df_avg[min_count_filter.all(axis=1)]
     #print(df_X_y.head())
     #df_X_y = df_X_y.drop(columns=['DAY'])
-    print(f"Dropped {_nrows - len(df_X_y)} rows from min count filter ({len(df_X_y)})")
+    if len(df_X_y) == 0:
+        print("No data after filtering")
+        return None, None
 
     # normalize all data
     # add these columns back at the end

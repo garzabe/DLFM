@@ -7,7 +7,7 @@ import datetime
 import numpy as np
 import itertools
 
-from data_handler import AmeriFLUXDataset, prepare_data, Site
+from data_handler import AmeriFLUXDataset, prepare_data, Site, get_site_vars
 
 
 ##### Base Train, Test, Eval functions #######
@@ -154,6 +154,9 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     max_r2 = -np.inf
     for data_candidate in data_candidates:
         train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], **kwargs)
+        if train_data == None or len(train_data) == 0:
+            print("Training set had no data. Skipping this candidate...")
+            continue
         num_features = len(input_columns)*(3 if data_candidate['stat_interval'] is not None else 1)
         for candidate in candidates:
             print(f"""Hyperparameters:
@@ -164,7 +167,7 @@ Epochs: {candidate['epochs']}
 Layer Dimensions: {candidate['layer_dims']}
 Activation Function: {candidate['activation_fn'].__name__}
 """)
-            r2 = train_kfold(num_folds, model_class,
+            r2 = train_kfold(min(num_folds, train_data.get_num_years()), model_class,
                             candidate['lr'],
                             candidate['batch_size'],
                             candidate['epochs'],
@@ -177,7 +180,12 @@ Activation Function: {candidate['activation_fn'].__name__}
                 best = candidate
                 data_best = data_candidate
                 max_r2 = r2
+    if max_r2 == -np.inf:
+        print("No candidates succeeded (likely all datasets were empty)")
+        return None, {'r2': -np.inf}, None
     best['r2'] = max_r2
+
+    
 
     # 3. Train with final hparam selections
     print("Training the best performing model on the entire training set")
@@ -191,33 +199,68 @@ Activation Function: {candidate['activation_fn'].__name__}
             train(train_loader, model, loss_fn, optimizer, device)
     return model, best | data_best, history
 
-def feature_pruning(model_class : Type[nn.Module], **kwargs) -> list[str]:
+def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> list[str]:
     input_columns : list[str] = kwargs.get('input_columns', None)
+    # if no columns are given, start with the full set of variables
     if input_columns is None:
-        raise ValueError("feature_pruning requires the input_columns argument as an initial set of features")
+        input_columns = get_site_vars(site)
+    # exclude required columns from the feature pruning process
+    required_cols = ['TIMESTAMP_START','NEE_PI','NEE_PI_F','USTAR']
+    for required_col in required_cols:
+        if required_col in input_columns:
+            input_columns.remove(required_col)
+    # PPFD_IN is required
+    if 'PPFD_IN' not in input_columns:
+        input_columns.append('PPFD_IN')
     # TODO: prune until we no longer improve r-squared?
     # or prune a specific # of features
     # or test every combination of columns O(2^n) and pick the best one
     # get initial model performance
-    _, results, _ = train_hparam(model_class, **kwargs)
+    history = {}
+    kwargs.pop('input_columns', None)
+    _, results, _ = train_hparam(model_class, input_columns=input_columns, eval_years=1, **kwargs)
     max_r2 = results['r2']
-    kwargs.pop('input_columns')
+    # history indexed by # of pruned vars
+    history[0] = {'pruned_col': None, 'r2': results['r2']}
     pruned_columns = input_columns
     pruning = True
+    cols_pruned = 0
     while pruning:
         new_columns = pruned_columns.copy()
+        pruned_column = None
         for pruned_idx in range(len(pruned_columns)):
+            # do not prune PPFD_IN
+            if pruned_columns[pruned_idx] == 'PPFD_IN':
+                continue
+            print(f"Training model without {pruned_columns[pruned_idx]}")
             _candidate_columns = pruned_columns[0:pruned_idx] + pruned_columns[pruned_idx+1:]
             _, results, _ = train_hparam(model_class, input_columns=_candidate_columns, **kwargs)
             _r2 = results['r2']
             if _r2 > max_r2:
                 new_columns = _candidate_columns
+                pruned_column = pruned_columns[pruned_idx]
                 max_r2 = _r2
         # if we did not find a better set of columns, then end the pruning process
         if len(new_columns) == len(pruned_columns):
             pruning=False
         else:
+            cols_pruned += 1
             pruned_columns = new_columns
+            history[cols_pruned] = {'pruned_col': pruned_column, 'r2': max_r2}
+
+    # once pruning is complete, write the history to a file
+    dt = datetime.datetime.now()
+    with open(f"results/pruning_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.md", 'w') as f:
+        f.write('### Feature Pruning History\n\n')
+        f.write('| # Pruned Columns | Last Pruned Column | Average R-Squared |\n')
+        f.write('| --- | --- | --- |\n')
+        for num_pruned in range(len(history.keys())):
+            f.write(f'| {num_pruned} | {history[num_pruned]["pruned_col"]} | {history[num_pruned]["r2"]:.4f} |\n')
+
+        f.write('\n')
+        f.write('## Best Performing feature set:\n\n')
+        for col in pruned_columns:
+            f.write(f'{col}\n\n')
     return pruned_columns
     
 
@@ -230,6 +273,9 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
     final_model, hparams, history = train_hparam(model_class, **kwargs)
+    if final_model == None:
+        print("train_hparam failed to train any models")
+        return -np.inf
 
     # Evaluate the final model on the evaluation set
     kwargs.pop('stat_interval', None)

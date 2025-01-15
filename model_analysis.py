@@ -1,7 +1,7 @@
 from torch import nn
 
-from data_handler import AmeriFLUXDataset, prepare_data, Site
-from train import train_test_eval
+from data_handler import  Site, get_site_vars
+from train import train_test_eval, feature_pruning
 from model_class import FirstANN, DynamicANN, RNN, LSTM
 
 
@@ -34,16 +34,6 @@ plt.title('NEE Model Predictions')
 plt.show()
 """
 
-
-# A Dyanmic Programming feature pruning algorithm
-#  to determine the best feature set for a given model architecture
-#  
-def DP_feature_pruning(model_class, *model_args, **kwargs):
-    num_folds = kwargs.get('num_folds', 5)
-    epochs = kwargs.get('epochs', 100)
-    site = kwargs.get('site', Site.Me2)
-
-    # .... still has the same shortcoming as feature addition
 
 def test_tte():
     simple_cols = ['P', 'PPFD_IN']
@@ -106,9 +96,17 @@ def main():
         'TA_1_1_2'
     ]
 
+    input_columns = get_site_vars(Site.Me2)
+    # these columns are high in NA values and make it hard to find a feature set to train on
+    # 
+    bad_columns =  ['TIMESTAMP_END', 'G_1_1_1', 'G_6_1_1', 'G_7_1_1', 'G_8_1_1', 'ALB'] +['RECO_PI_F', 'WS_MAX', 'TA_2_2_1', 'TA_2_2_2', 'RH_2_2_1', 'PPFD_IN_2_2_1', 'SW_IN_2_2_1', 'SW_OUT_2_2_1', 'LW_IN_2_2_1', 'LW_OUT_2_2_1', 'NETRAD_2_2_1', 'PA_2_2_1']
+    for bad_col in bad_columns:
+        input_columns.remove(bad_col)
+    feature_pruning(DynamicANN, site, num_folds=5, epochs=100, batch_size=64, lr=1e-2, layer_dims=(4,4,4), input_columns=input_columns)
+
     #test_tte()
 
-    best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
+    #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
 
     #train_test_eval(LSTM, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2)
 
