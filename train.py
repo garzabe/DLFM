@@ -308,6 +308,6 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
 
         f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Evaluation R-Squared |\n')
         f.write('| --- | --- | --- | --- | --- | --- | --- |\n')
-        f.write(f"| {hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {candidate['stat_interval']} | {r2eval:.4f} |\n")
+        f.write(f"| {hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {hparams['stat_interval']} | {r2eval:.4f} |\n")
     
     return r2eval
