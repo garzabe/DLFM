@@ -102,9 +102,9 @@ def main():
     bad_columns =  ['TIMESTAMP_END', 'G_1_1_1', 'G_6_1_1', 'G_7_1_1', 'G_8_1_1', 'ALB'] +['RECO_PI_F', 'WS_MAX', 'TA_2_2_1', 'TA_2_2_2', 'RH_2_2_1', 'PPFD_IN_2_2_1', 'SW_IN_2_2_1', 'SW_OUT_2_2_1', 'LW_IN_2_2_1', 'LW_OUT_2_2_1', 'NETRAD_2_2_1', 'PA_2_2_1']
     for bad_col in bad_columns:
         input_columns.remove(bad_col)
-    #feature_pruning(DynamicANN, site, num_folds=5, epochs=100, batch_size=64, lr=1e-2, layer_dims=(4,4,4), input_columns=input_columns)
+    feature_pruning(DynamicANN, site, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6), input_columns=input_columns)
 
-    test_tte()
+    #test_tte()
 
     #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
 

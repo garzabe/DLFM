@@ -104,13 +104,20 @@ def train_kfold(num_folds : int,
 
     # display r squared results
     print("K-Fold Cross Validation Results")
-    sum = 0
+    num_folds_actual = len(r2_results.items())
+    total = 0
     for key, value in r2_results.items():
         print(f"Fold {key}: r2={value:.4f}")
-        sum += value
-    avg_r2 = sum/len(r2_results.items())
-    print(f"Average r-squared: {avg_r2}")
-    return avg_r2
+        total += value
+    avg_r2 = total/num_folds_actual
+    stddev = (sum([(r2-avg_r2)**2 for r2 in r2_results.values()])/num_folds_actual)**0.5
+    print(f"Average r-squared: {avg_r2}; stddev : {stddev}")
+    t_table = {1: 100, 2: 12.71, 3: 4.30, 4: 3.18, 5: 2.78, 6: 2.57, 7: 2.45, 8: 2.37, 9: 2.31, 10: 2.26}
+    t_score = t_table[num_folds_actual]
+    ci_low = avg_r2 - t_score*(stddev/num_folds_actual**0.5)
+    ci_high =avg_r2 + t_score*(stddev/num_folds_actual**0.5)
+    print(f"95% confidence interval: {ci_low} - {ci_high}")
+    return avg_r2, ci_low
 
 
 
@@ -127,6 +134,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     activation_fn = kwargs.get('activation_fn', nn.ReLU)
     lr = kwargs.get('lr', 1e-2)
     batch_size = kwargs.get('batch_size', 64)
+    skip_eval = kwargs.get('skip_eval', False)
     stat_interval =  kwargs.pop('stat_interval', None)
 
     # 2. Initialize the model
@@ -154,8 +162,8 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     max_r2 = -np.inf
     for data_candidate in data_candidates:
         train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], **kwargs)
-        if train_data == None or len(train_data) == 0:
-            print("Training set had no data. Skipping this candidate...")
+        if train_data == None or len(train_data) == 0 or train_data.get_num_years() <= 1:
+            print("Training set does not have enough data. Skipping this candidate...")
             continue
         num_features = len(input_columns)*(3 if data_candidate['stat_interval'] is not None else 1)
         for candidate in candidates:
@@ -167,7 +175,7 @@ Epochs: {candidate['epochs']}
 Layer Dimensions: {candidate['layer_dims']}
 Activation Function: {candidate['activation_fn'].__name__}
 """)
-            r2 = train_kfold(min(num_folds, train_data.get_num_years()), model_class,
+            r2, ci_low = train_kfold(min(num_folds, train_data.get_num_years()), model_class,
                             candidate['lr'],
                             candidate['batch_size'],
                             candidate['epochs'],
@@ -176,17 +184,18 @@ Activation Function: {candidate['activation_fn'].__name__}
                             activation_fn=candidate['activation_fn'])
             history.append(candidate | data_candidate | {'train_size' : len(train_data)})
             history[-1]['r2'] = r2
-            if r2 > max_r2:
+            history[-1]['ci_low'] = ci_low
+            if ci_low > max_r2: # to account for folds with different # of years, we use confidence intervals
                 best = candidate
                 data_best = data_candidate
-                max_r2 = r2
+                max_r2 = ci_low
     if max_r2 == -np.inf:
         print("No candidates succeeded (likely all datasets were empty)")
         return None, {'r2': -np.inf}, None
     best['r2'] = max_r2
 
-    
-
+    if skip_eval:
+        return None, best | data_best, history
     # 3. Train with final hparam selections
     print("Training the best performing model on the entire training set")
     train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
@@ -218,7 +227,7 @@ def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> lis
     # get initial model performance
     history = {}
     kwargs.pop('input_columns', None)
-    _, results, _ = train_hparam(model_class, input_columns=input_columns, eval_years=1, **kwargs)
+    _, results, _ = train_hparam(model_class, input_columns=input_columns, eval_years=1, skip_eval=True, **kwargs)
     max_r2 = results['r2']
     # history indexed by # of pruned vars
     history[0] = {'pruned_col': None, 'r2': results['r2']}
@@ -234,7 +243,7 @@ def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> lis
                 continue
             print(f"Training model without {pruned_columns[pruned_idx]}")
             _candidate_columns = pruned_columns[0:pruned_idx] + pruned_columns[pruned_idx+1:]
-            _, results, _ = train_hparam(model_class, input_columns=_candidate_columns, **kwargs)
+            _, results, _ = train_hparam(model_class, input_columns=_candidate_columns, skip_eval=True, **kwargs)
             _r2 = results['r2']
             if _r2 > max_r2:
                 new_columns = _candidate_columns
