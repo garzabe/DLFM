@@ -124,7 +124,7 @@ def main():
 
     best_rnn_search(site, me2_input_column_set, model_class=LSTM)
     best_rnn_search(site, me2_input_column_set, model_class=RNN)
-    train_test_eval(LSTM, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2)
+    train_test_eval(RNN, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=2)
 
                 
 if __name__=="__main__":

@@ -58,17 +58,19 @@ class RNN(NEPModel):
         super().__init__()
         hidden_state_size = kwargs.get('hidden_state_size', 8)
         batch_size = kwargs.get("batch_size", 1)
+        num_layers = kwargs.get('num_layers', 1)
+        self.num_layers = num_layers
 
         self.h0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
 
-        self.rnn = nn.RNN(num_features, hidden_state_size, 1, batch_first=True)
+        self.rnn = nn.RNN(num_features, hidden_state_size, num_layers, batch_first=True)
         self.relu = nn.ReLU()
         self.linear = nn.Linear(in_features=hidden_state_size, out_features=1)
     
     def forward(self, x):
         # batch size is not necessarily batch_size (i.e. the last batch is less than that)
         _batch_size = x.shape[0]
-        _h0 = self.h0.repeat(1, _batch_size, 1)
+        _h0 = self.h0.repeat(self.num_layers, _batch_size, 1)
         # we are only interested in the final output (at the moment)
         _, hn = self.rnn(x, _h0)
         _hn = self.relu(hn)
@@ -84,6 +86,8 @@ class LSTM(NEPModel):
         dropout = kwargs.get('dropout', 0.0)
         batch_size = kwargs.get("batch_size", 1)
 
+        self.num_layers = num_layers
+
         self.h0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
         self.c0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
 
@@ -93,8 +97,8 @@ class LSTM(NEPModel):
     
     def forward(self, x):
         _batch_size = x.shape[0]
-        _h0 = self.h0.repeat(1, _batch_size, 1)
-        _c0 = self.c0.repeat(1, _batch_size, 1)
+        _h0 = self.h0.repeat(self.num_layers, _batch_size, 1)
+        _c0 = self.c0.repeat(self.num_layers, _batch_size, 1)
         _, (_x, _) = self.lstm(x, (_h0, _c0))
         _x = self.relu(_x)
         y = self.linear(_x)
