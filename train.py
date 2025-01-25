@@ -208,7 +208,10 @@ Dropout: {candidate['dropout']}
                             candidate['epochs'],
                             loss_fn, train_data, device, num_features,
                             layer_dims=candidate['layer_dims'],
-                            activation_fn=candidate['activation_fn'])
+                            activation_fn=candidate['activation_fn'],
+                            hidden_state_size=candidate['hidden_state_size'],
+                            num_layers=candidate['num_layers'],
+                            dropout=candidate['dropout'])
             history.append(candidate | data_candidate | {'train_size' : len(train_data)})
             history[-1]['r2'] = r2
             history[-1]['ci_low'] = ci_low
