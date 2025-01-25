@@ -136,6 +136,11 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     batch_size = kwargs.get('batch_size', 64)
     skip_eval = kwargs.get('skip_eval', False)
     stat_interval =  kwargs.pop('stat_interval', None)
+    sequence_length = kwargs.pop('sequence_length', 7)
+    time_series = kwargs.get('time_series', False)
+    hidden_state_size = kwargs.get('hidden_state_size', 8)
+    num_layers = kwargs.get('num_layers', 1)
+    dropout = kwargs.get('dropout', 0.0)
 
     # 2. Initialize the model
     device = ("cuda" if torch.cuda.is_available() else "cpu")
@@ -148,11 +153,18 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     lr_list = lr if isinstance(lr, list) else [lr]
     batch_size_list = batch_size if isinstance(batch_size, list) else [batch_size]
     stat_interval_list = stat_interval if isinstance(stat_interval, list) else [stat_interval]
+    sequence_length_list = sequence_length if isinstance(sequence_length, list) else [sequence_length]
+    hidden_state_list = hidden_state_size if isinstance(hidden_state_size, list) else [hidden_state_size]
+    num_layers_list = num_layers if isinstance(num_layers, list) else [num_layers]
+    dropout_list = dropout if isinstance(dropout, list) else [dropout]
 
-    data_candidates = [{'stat_interval': si} for si in stat_interval_list]
+    if time_series:
+        data_candidates = [{'sequence_length': sl} for sl in sequence_length_list]
+    else:
+        data_candidates = [{'stat_interval': si} for si in stat_interval_list]
     candidates = []
-    for e, ld, af, l, bs, in itertools.product(epochs_list, layer_dims_list, activation_fn_list, lr_list, batch_size_list):
-        candidate = {"epochs": e, "layer_dims": ld, "activation_fn": af, "lr": l, "batch_size": bs}
+    for e, ld, af, l, bs, hs, nl, d in itertools.product(epochs_list, layer_dims_list, activation_fn_list, lr_list, batch_size_list, hidden_state_list, num_layers_list, dropout_list):
+        candidate = {"epochs": e, "layer_dims": ld, "activation_fn": af, "lr": l, "batch_size": bs, "hidden_state_size": hs, 'num_layers': nl, 'dropout': d}
         candidates.append(candidate)
 
     print(f"Running K-Fold Cross Validation on {len(candidates)*len(data_candidates)} different hyperparameter configurations")
@@ -161,19 +173,34 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     data_best = None
     max_r2 = -np.inf
     for data_candidate in data_candidates:
-        train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], **kwargs)
+        if time_series:
+            train_data, _ = prepare_data(site, sequence_length=data_candidate['sequence_length'], **kwargs)
+        else:
+            train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], **kwargs)
         if train_data == None or len(train_data) == 0 or train_data.get_num_years() <= 1:
             print("Training set does not have enough data. Skipping this candidate...")
             continue
-        num_features = len(input_columns)*(3 if data_candidate['stat_interval'] is not None else 1)
+        num_features = len(input_columns)*(3 if not time_series and data_candidate['stat_interval'] is not None else 1)
         for candidate in candidates:
-            print(f"""Hyperparameters:
+            if time_series:
+                print(f"""Hyperparameters:
+Sequence Length: {data_candidate['sequence_length']}
+Learning Rate: {candidate['lr']}
+Batch Size: {candidate['batch_size']}
+Epochs: {candidate['epochs']}
+Layer Dimensions: {candidate['num_layers']} x {candidate['hidden_state_size']}
+Activation Function: {candidate['activation_fn'].__name__}
+Dropout: {candidate['dropout']}
+""")
+            else:
+                print(f"""Hyperparameters:
 Stat Interval: {data_candidate['stat_interval']}
 Learning Rate: {candidate['lr']}
 Batch Size: {candidate['batch_size']}
 Epochs: {candidate['epochs']}
 Layer Dimensions: {candidate['layer_dims']}
 Activation Function: {candidate['activation_fn'].__name__}
+Dropout: {candidate['dropout']}
 """)
             r2, ci_low = train_kfold(min(num_folds, train_data.get_num_years()), model_class,
                             candidate['lr'],
@@ -198,9 +225,12 @@ Activation Function: {candidate['activation_fn'].__name__}
         return None, best | data_best, history
     # 3. Train with final hparam selections
     print("Training the best performing model on the entire training set")
-    train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
-    num_features = len(input_columns)*(3 if data_best['stat_interval'] is not None else 1)
-    model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn'], batch_size=best['batch_size']).to(device)
+    if time_series:
+        train_data, _ = prepare_data(site, sequence_length=data_best['sequence_length'], **kwargs)
+    else:
+        train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
+    num_features = len(input_columns)*(3 if not time_series and data_best['stat_interval'] is not None else 1)
+    model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn'], batch_size=best['batch_size'], num_layers=best['num_layers'], hidden_state_size=best['hidden_state_size'], dropout=best['dropout']).to(device)
     train_loader = DataLoader(train_data, batch_size=best['batch_size'])
     optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
     for t in range(best['epochs']):
@@ -210,6 +240,8 @@ Activation Function: {candidate['activation_fn'].__name__}
 
 def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> list[str]:
     input_columns : list[str] = kwargs.get('input_columns', None)
+    stat_interval = kwargs.get('stat_interval', False)
+    # TODO: we need to somehow be able to have rolling window vars without their parent var (e.g. P_rolling_var without P)
     # if no columns are given, start with the full set of variables
     if input_columns is None:
         input_columns = get_site_vars(site)
@@ -242,7 +274,8 @@ def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> lis
             if pruned_columns[pruned_idx] == 'PPFD_IN':
                 continue
             print(f"Training model without {pruned_columns[pruned_idx]}")
-            _candidate_columns = pruned_columns[0:pruned_idx] + pruned_columns[pruned_idx+1:]
+            _candidate_columns = pruned_columns[0:pruned_idx] + pruned_columns[pruned_idx+1:]# if stat interval is included then 
+
             _, results, _ = train_hparam(model_class, input_columns=_candidate_columns, skip_eval=True, **kwargs)
             _r2 = results['r2']
             if _r2 > max_r2:
@@ -279,6 +312,7 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     num_folds = kwargs.get('num_folds', 5)
     site = kwargs.get('site', Site.Me2)
     input_columns=kwargs.get('input_columns', [])
+    time_series = kwargs.get('time_series', False)
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
     final_model, hparams, history = train_hparam(model_class, **kwargs)
@@ -287,8 +321,12 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         return -np.inf
 
     # Evaluate the final model on the evaluation set
-    kwargs.pop('stat_interval', None)
-    _, eval_data = prepare_data(site, stat_interval=hparams['stat_interval'], **kwargs)
+    if time_series:
+        kwargs.pop('sequence_length', None)
+        _, eval_data = prepare_data(site, sequence_length=hparams['sequence_length'], **kwargs)
+    else:
+        kwargs.pop('stat_interval', None)
+        _, eval_data = prepare_data(site, stat_interval=hparams['stat_interval'], **kwargs)
     eval_loader = DataLoader(eval_data, batch_size=64)
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     r2metric = R2Score(device=device)
@@ -298,13 +336,13 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     dt = datetime.datetime.now()
     with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.md", 'w') as f:
         f.write("### K-Fold Cross-Validation History\n\n")
-        f.write(f'## {final_model.__class__.__name__}')
+        f.write(f'## {final_model.__class__.__name__}\n\n')
         f.write(f"Folds: {num_folds}\n\n")
 
-        f.write('| Training Set Size | Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Average R-Squared |\n')
+        f.write('| Training Set Size | Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Dropout | Average R-Squared |\n')
         f.write('| --- | --- | --- | --- | --- | --- | --- | --- |\n')
         for candidate in history:
-            f.write(f"| {candidate['train_size']} | {candidate['layer_dims']} | {candidate['activation_fn'].__name__} | {candidate['lr']} | {candidate['batch_size']} | {candidate['epochs']} | {candidate['stat_interval']} | {candidate['r2']:.4f} |\n")
+            f.write(f"| {candidate['train_size']} | {candidate['num_layers'], candidate['hidden_state_size'] if time_series else candidate['layer_dims']} | {candidate['activation_fn'].__name__} | {candidate['lr']} | {candidate['batch_size']} | {candidate['epochs']} | {candidate['sequence_length'] if time_series else candidate['stat_interval']} | {candidate['dropout']:.2f} | {candidate['r2']:.4f} |\n")
 
         f.write('\n')
         f.write("### Best Model Evaluation\n\n")
@@ -315,8 +353,8 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         f.write(f'{model_str_lines[-1]}\n~~~')
         f.write('\n\n')
 
-        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Evaluation R-Squared |\n')
+        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Dropout | Evaluation R-Squared |\n')
         f.write('| --- | --- | --- | --- | --- | --- | --- |\n')
-        f.write(f"| {hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {hparams['stat_interval']} | {r2eval:.4f} |\n")
+        f.write(f"| {hparams['num_layers'], hparams['hidden_state_size'] if time_series else hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {hparams['sequence_length'] if time_series else hparams['stat_interval']} | {hparams['dropout']:.2f} | {r2eval:.4f} |\n")
     
     return r2eval

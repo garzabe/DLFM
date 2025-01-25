@@ -111,8 +111,8 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     sequence_length = kwargs.get('sequence_length', -1)
 
     # if we want time series data, then jump to the time series data preparator instead
-    if time_series:
-        return prepare_timeseries_data(site_name, input_columns, sequence_length)
+    #if time_series:
+    #    return prepare_timeseries_data(site_name, input_columns, sequence_length)
 
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
@@ -139,7 +139,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
 
     # group into daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
-    df['DAY'] = df['DATETIME'].apply(lambda dt: f"{dt.year:04}{dt.month:02}{dt.day:02}")
+    df['DAY'] = pd.to_datetime(df['DATETIME'].apply(lambda dt: f"{dt.year:04}{dt.month:02}{dt.day:02}"))
     df = df.drop(columns=['DATETIME', 'TIMESTAMP_START'])
     
     # the means are the important values, but count helps us identify low-data days
@@ -168,20 +168,54 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
 
-    # simple train-eval and eval 80/20 split
-    train_size = int(len(_df)*0.8)
-    # TODO: modular design to day of year split
-    # determine where the eval set starts
-    first_eval_year = int(_df["DAY"].iloc[-1][:4]) - (eval_years - 1)
-    eval_year_range = [str(y) for y in range(first_eval_year, 2022)]
-    year_match_str = '|'.join(eval_year_range)
-    _df_eval = _df[_df["DAY"].str.match(rf'^{year_match_str}\d\d\d\d$')]
-    _df = _df[~_df["DAY"].str.match(rf'^{year_match_str}\d\d\d\d$')]
-    print(f"The training set has {len(_df)} entries")
-    print(f"The eval set has {len(_df_eval)} entries")
 
-  
-    return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
+    if time_series:
+        X_dataset = []
+        y_dataset = []
+        years_idx = []
+        print("Building dataset")
+        # TODO: is there a way to hack the rolling window to quicky generate the sequence data we need?
+        #print(pd.DataFrame(df.rolling(window=sequence_length)))
+        # This doesn't work
+        #print(pd.DataFrame(df.rolling(window=sequence_length)).apply(lambda r: r.dropna(ignore_index=True), axis=1))
+        # perhaps iterate over columns and generate the sequences for each column and ~~combine~~
+        t = tqdm.tqdm(total = len(_df)-sequence_length)
+        for i in range(len(_df)-sequence_length):
+            t.update(1)
+            # if there are any gaps, skip this iteration
+            if _df['DAY'].iloc[i] + pd.Timedelta(sequence_length, 'day') != _df['DAY'].iloc[i+sequence_length]:
+                continue
+            df_seq = _df.iloc[i:i+sequence_length]
+            year = df_seq['DAY'].dt.year.iloc[-1]
+            df_seq = df_seq.drop(columns=['DAY'])
+
+            X_seq = df_seq.drop(columns=["NEE"]).to_numpy(dtype=np.float32)
+            #print(X_seq)
+            y = df_seq[["NEE"]].iloc[-1].to_numpy(dtype=np.float32)
+            X_dataset.append(X_seq)
+            y_dataset.append(y)
+            years_idx.append(year)
+        years_ref = np.unique(years_idx)
+        years_eval = years_ref[-eval_years:]
+        eval_idx = bisect.bisect(years_idx, years_eval[0])
+        X_train = np.array(X_dataset[0:eval_idx])
+        y_train = np.array(y_dataset[0:eval_idx])
+        X_eval = np.array(X_dataset[eval_idx:])
+        y_eval = np.array(y_dataset[eval_idx:])
+        train_years_idx = years_idx[0:eval_idx]
+        eval_years_idx = years_idx[eval_idx:]
+        return AmeriFLUXSequenceDataset(X_train, y_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, eval_years_idx)
+
+    else:
+        # simple train-eval and eval 80/20 split
+        train_size = int(len(_df)*0.8)
+        # TODO: modular design to day of year split
+        # determine where the eval set starts
+        #first_eval_year = np.unique(_df['DAY'].dt.year)[-eval_years]
+        eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
+        _df_eval = _df[_df["DAY"].dt.year in eval_year_range]
+        _df = _df[~(_df["DAY"].dt.year in eval_year_range)]
+        return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
     
 
 def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_length : int, eval_years : int = 2) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
