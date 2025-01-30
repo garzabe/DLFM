@@ -268,6 +268,10 @@ Dropout: {candidate['dropout']}
     plt.ylabel("NEE")
     plt.legend()
     plt.title('NEE Model Predictions on final year of train data')
+    if time_series:
+        plt.suptitle(f"{type(model).__name__} | LR: {best['lr']:.2f} | BS: {best['batch_size']} | EP: {best['epochs']} | L: {best['num_layers']} x {best['hidden_state_size']} | Seq: {data_best['sequence_length']} | D: {best['dropout']:.1f}")
+    else:
+        plt.suptitle(f"{type(model).__name__} | LR: {best['lr']:.2f} | BS: {best['batch_size']} | EP: {best['epochs']} | L: {best['layer_dims']} | Seq: {data_best['stat_interval']}")
     dt = datetime.datetime.now()
     plt.savefig(f'images/plot-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.png')
     plt.show()
