@@ -41,8 +41,8 @@ def test_tte():
     train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
     train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
     # test time series data preparation and RNN predictor model
-    #train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
-    #train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
+    train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
+    train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -118,13 +118,13 @@ def main():
         input_columns.remove(bad_col)
     #feature_pruning(DynamicANN, site, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6), input_columns=input_columns)
 
-    #test_tte()
+    test_tte()
 
     #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
 
-    best_rnn_search(site, me2_input_column_set, model_class=LSTM)
-    best_rnn_search(site, me2_input_column_set, model_class=RNN)
-    train_test_eval(RNN, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=2)
+    #best_rnn_search(site, me2_input_column_set, model_class=LSTM)
+    #best_rnn_search(site, me2_input_column_set, model_class=RNN)
+    #train_test_eval(RNN, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=2)
 
                 
 if __name__=="__main__":

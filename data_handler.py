@@ -18,6 +18,10 @@ class AmeriFLUXDataset(Dataset, ABC):
         pass
 
     @abstractmethod
+    def get_dates(self, idx_range : list[int]) -> list:
+        pass
+
+    @abstractmethod
     def __getitem__(self, idx):
         pass
 
@@ -25,7 +29,7 @@ class AmeriFLUXLinearDataset(Dataset):
     def __init__(self, df_X_y : pd.DataFrame):
         # hold onto the original dataframe
         self.df = df_X_y.reset_index()
-        self.years = self.df['DAY'].str[:4].unique()
+        self.years = self.df['DAY'].dt.year.unique()
         self.inputs : pd.DataFrame = self.df.drop(columns=['DAY', 'NEE'])
         self.labels : pd.Series = self.df['NEE']
 
@@ -39,8 +43,11 @@ class AmeriFLUXLinearDataset(Dataset):
             print(f"Warning: delta_year ({delta_year}) is greater than the number of years in the dataset ({len(self.years)})")
             return None, None
         year = self.years[-1-delta_year]
-        test_year_match = self.df['DAY'].str.match(rf'^{year}\d\d\d\d$')
+        test_year_match = self.df['DAY'].dt.year == year
         return self.df[~test_year_match].index.to_list(), self.df[test_year_match].index.to_list()
+    
+    def get_dates(self, idx_range : list[int]):
+        return self.df['DAY'].iloc[idx_range].to_list()
 
     def get_num_years(self):
         return len(self.years)
@@ -58,9 +65,10 @@ class AmeriFLUXLinearDataset(Dataset):
         return self.labels.to_numpy()
     
 class AmeriFLUXSequenceDataset(Dataset):
-    def __init__(self, X, y, years_idx):
+    def __init__(self, X, y, dates, years_idx):
         self.inputs = X
         self.labels = y
+        self.dates = dates
         self.years_idx = years_idx
         self.years = np.unique(self.years_idx)
 
@@ -83,6 +91,9 @@ class AmeriFLUXSequenceDataset(Dataset):
         year_lo = bisect.bisect(self.years_idx, year-1)
         year_hi = bisect.bisect(self.years_idx, year)
         return list(range(0, year_lo)) + list(range(year_hi, len(self.years_idx))), list(range(year_lo, year_hi))
+    
+    def get_dates(self, idx_range : list[int]):
+        return [self.dates[i] for i in idx_range]
 
 def get_data(site : Site):
     if not isinstance(site, Site):
@@ -173,6 +184,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         X_dataset = []
         y_dataset = []
         years_idx = []
+        dates = []
         print("Building dataset")
         # TODO: is there a way to hack the rolling window to quicky generate the sequence data we need?
         #print(pd.DataFrame(df.rolling(window=sequence_length)))
@@ -187,6 +199,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
                 continue
             df_seq = _df.iloc[i:i+sequence_length]
             year = df_seq['DAY'].dt.year.iloc[-1]
+            date = df_seq['DAY'].iloc[-1]
             df_seq = df_seq.drop(columns=['DAY'])
 
             X_seq = df_seq.drop(columns=["NEE"]).to_numpy(dtype=np.float32)
@@ -195,16 +208,19 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
             X_dataset.append(X_seq)
             y_dataset.append(y)
             years_idx.append(year)
+            dates.append(date)
         years_ref = np.unique(years_idx)
         years_eval = years_ref[-eval_years:]
         eval_idx = bisect.bisect(years_idx, years_eval[0])
         X_train = np.array(X_dataset[0:eval_idx])
         y_train = np.array(y_dataset[0:eval_idx])
+        dates_train = np.array(dates[0:eval_idx])
         X_eval = np.array(X_dataset[eval_idx:])
         y_eval = np.array(y_dataset[eval_idx:])
+        dates_eval = np.array(dates[eval_idx:])
         train_years_idx = years_idx[0:eval_idx]
         eval_years_idx = years_idx[eval_idx:]
-        return AmeriFLUXSequenceDataset(X_train, y_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, eval_years_idx)
+        return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
 
     else:
         # simple train-eval and eval 80/20 split
@@ -213,8 +229,8 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         # determine where the eval set starts
         #first_eval_year = np.unique(_df['DAY'].dt.year)[-eval_years]
         eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
-        _df_eval = _df[_df["DAY"].dt.year in eval_year_range]
-        _df = _df[~(_df["DAY"].dt.year in eval_year_range)]
+        _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
+        _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
         return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
     
 

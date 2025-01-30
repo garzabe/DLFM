@@ -6,6 +6,8 @@ from typing import Callable, Type
 import datetime
 import numpy as np
 import itertools
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 from data_handler import AmeriFLUXDataset, prepare_data, Site, get_site_vars
 
@@ -112,11 +114,14 @@ def train_kfold(num_folds : int,
     avg_r2 = total/num_folds_actual
     stddev = (sum([(r2-avg_r2)**2 for r2 in r2_results.values()])/num_folds_actual)**0.5
     print(f"Average r-squared: {avg_r2}; stddev : {stddev}")
+
+    # Determine the lower bound of the 95% confidence interval
     t_table = {1: 100, 2: 12.71, 3: 4.30, 4: 3.18, 5: 2.78, 6: 2.57, 7: 2.45, 8: 2.37, 9: 2.31, 10: 2.26}
     t_score = t_table[num_folds_actual]
     ci_low = avg_r2 - t_score*(stddev/num_folds_actual**0.5)
     ci_high =avg_r2 + t_score*(stddev/num_folds_actual**0.5)
     print(f"95% confidence interval: {ci_low} - {ci_high}")
+
     return avg_r2, ci_low
 
 
@@ -239,6 +244,32 @@ Dropout: {candidate['dropout']}
     for t in range(best['epochs']):
             print(f"Epoch {t+1}")
             train(train_loader, model, loss_fn, optimizer, device)
+
+
+    # visualize the training performance of the final model across time
+    _, test_idx = train_data.get_train_test_idx(0)
+    test_subsampler = SubsetRandomSampler(test_idx)
+    dates = train_data.get_dates(test_idx)
+    test_loader = DataLoader(train_data, batch_size=len(test_idx), shuffle=False, sampler=test_subsampler)
+    X, _y = next(iter(test_loader))
+    _y_pred : torch.Tensor = model(X)
+    y_pred = [a[0] for a in _y_pred.detach().numpy()]
+    y = [a[0] for a in _y.detach().numpy()]
+    x = [d.date() for d in dates]
+
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%m/%d/%Y"))
+    plt.gca().xaxis.set_major_locator(mdates.DayLocator())
+    plt.plot(x, y, label='Actual NEE')
+    plt.plot(x, y_pred, label='Predicted NEE')
+    plt.xticks([x[i] for i in range(0, len(x), len(x)//12)])
+    plt.gcf().autofmt_xdate()
+    plt.ylabel("NEE")
+    plt.legend()
+    plt.title('NEE Model Predictions on final year of train data')
+    dt = datetime.datetime.now()
+    plt.savefig(f'images/plot-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.png')
+    plt.show()
+
     return model, best | data_best, history
 
 def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> list[str]:
