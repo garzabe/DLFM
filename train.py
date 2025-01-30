@@ -248,9 +248,11 @@ Dropout: {candidate['dropout']}
 
     # visualize the training performance of the final model across time
     _, test_idx = train_data.get_train_test_idx(0)
+    # option: look at just the final ~6 months
+    #test_idx = test_idx[-len(test_idx)//2:]
     test_subsampler = SubsetRandomSampler(test_idx)
     dates = train_data.get_dates(test_idx)
-    test_loader = DataLoader(train_data, batch_size=len(test_idx), shuffle=False, sampler=test_subsampler)
+    test_loader = DataLoader(train_data, batch_size=len(dates), shuffle=False)#, sampler=test_subsampler)
     X, _y = next(iter(test_loader))
     _y_pred : torch.Tensor = model(X)
     y_pred = [a[0] for a in _y_pred.detach().numpy()]

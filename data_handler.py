@@ -168,6 +168,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     df_X_y = df_avg[min_count_filter.all(axis=1)]
     #print(df_X_y.head())
     #df_X_y = df_X_y.drop(columns=['DAY'])
+    print(len(df_X_y))
     if len(df_X_y) == 0:
         print("No data after filtering")
         return None, None
@@ -209,6 +210,9 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
             y_dataset.append(y)
             years_idx.append(year)
             dates.append(date)
+        # sequence too long, empty dataset
+        if len(X_dataset) == 0:
+            return None, None
         years_ref = np.unique(years_idx)
         years_eval = years_ref[-eval_years:]
         eval_idx = bisect.bisect(years_idx, years_eval[0])
@@ -223,11 +227,6 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
 
     else:
-        # simple train-eval and eval 80/20 split
-        train_size = int(len(_df)*0.8)
-        # TODO: modular design to day of year split
-        # determine where the eval set starts
-        #first_eval_year = np.unique(_df['DAY'].dt.year)[-eval_years]
         eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
         _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
         _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]

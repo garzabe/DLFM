@@ -38,11 +38,11 @@ plt.show()
 def test_tte():
     simple_cols = ['P', 'PPFD_IN']
     # This should take little time to run
-    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
-    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
+    #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
+    #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
     # test time series data preparation and RNN predictor model
     train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
-    train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
+    train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=50)
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -52,7 +52,7 @@ def best_vanilla_network_search(site, input_columns, stat_interval=None):
     train_test_eval(DynamicANN,
                     layer_dims=[(1, ), (4, ), (8, ), (10, ), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
                     num_folds=7,
-                    epochs=[100,200],
+                    epochs=[100,200,300],
                     site=site,
                     input_columns=input_columns,
                     lr=[1e-3, 1e-2],
@@ -62,12 +62,12 @@ def best_vanilla_network_search(site, input_columns, stat_interval=None):
 def best_rnn_search(site, input_columns, model_class = LSTM):
     train_test_eval(model_class,
                     num_folds=7,
-                    epochs=[100,200],
+                    epochs=[100,200,300],
                     site=site,
                     input_columns=input_columns,
                     lr=[1e-2, 1e-3],
                     batch_size=[32,64],
-                    sequence_length=[7,14,31,365],
+                    sequence_length=[7,14,31,62,124], # 1 year is too long...
                     hidden_state_size=[4,8,15],
                     num_layers=[1,2,3],
                     dropout=[0.0, 0.01, 0.1],
@@ -118,13 +118,13 @@ def main():
         input_columns.remove(bad_col)
     #feature_pruning(DynamicANN, site, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6), input_columns=input_columns)
 
-    test_tte()
+    #test_tte()
 
-    #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
+    best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
 
-    #best_rnn_search(site, me2_input_column_set, model_class=LSTM)
-    #best_rnn_search(site, me2_input_column_set, model_class=RNN)
-    #train_test_eval(RNN, time_series=True, sequence_length=7, num_folds=5, epochs=100, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=2)
+    best_rnn_search(site, me2_input_column_set, model_class=LSTM)
+    best_rnn_search(site, me2_input_column_set, model_class=RNN)
+    #train_test_eval(RNN, time_series=True, sequence_length=50, num_folds=5, epochs=300, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=1, num_layers=2)
 
                 
 if __name__=="__main__":
