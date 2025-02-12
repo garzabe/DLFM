@@ -143,6 +143,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     stat_interval =  kwargs.pop('stat_interval', None)
     sequence_length = kwargs.pop('sequence_length', 7)
     time_series = kwargs.get('time_series', False)
+    flatten = kwargs.get('flatten', False)
     hidden_state_size = kwargs.get('hidden_state_size', 8)
     num_layers = kwargs.get('num_layers', 1)
     dropout = kwargs.get('dropout', 0.0)
@@ -211,7 +212,7 @@ Dropout: {candidate['dropout']}
                             candidate['lr'],
                             candidate['batch_size'],
                             candidate['epochs'],
-                            loss_fn, train_data, device, num_features,
+                            loss_fn, train_data, device, num_features*data_candidate['sequence_length'] if time_series and flatten else num_features,
                             layer_dims=candidate['layer_dims'],
                             activation_fn=candidate['activation_fn'],
                             hidden_state_size=candidate['hidden_state_size'],
@@ -238,7 +239,7 @@ Dropout: {candidate['dropout']}
     else:
         train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
     num_features = len(input_columns)*(3 if not time_series and data_best['stat_interval'] is not None else 1)
-    model : nn.Module = model_class(num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn'], batch_size=best['batch_size'], num_layers=best['num_layers'], hidden_state_size=best['hidden_state_size'], dropout=best['dropout']).to(device)
+    model : nn.Module = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn'], batch_size=best['batch_size'], num_layers=best['num_layers'], hidden_state_size=best['hidden_state_size'], dropout=best['dropout']).to(device)
     train_loader = DataLoader(train_data, batch_size=best['batch_size'])
     optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
     for t in range(best['epochs']):
@@ -259,6 +260,7 @@ Dropout: {candidate['dropout']}
     y = [a[0] for a in _y.detach().numpy()]
     x = [d.date() for d in dates]
 
+    plt.clf()
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%m/%d/%Y"))
     plt.gca().xaxis.set_major_locator(mdates.DayLocator())
     plt.plot(x, y, label='Actual NEE')
@@ -274,7 +276,6 @@ Dropout: {candidate['dropout']}
         plt.suptitle(f"{type(model).__name__} | LR: {best['lr']:.2f} | BS: {best['batch_size']} | EP: {best['epochs']} | L: {best['layer_dims']} | Seq: {data_best['stat_interval']}")
     dt = datetime.datetime.now()
     plt.savefig(f'images/plot-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.png')
-    plt.show()
 
     return model, best | data_best, history
 

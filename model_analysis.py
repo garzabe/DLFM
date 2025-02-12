@@ -5,41 +5,14 @@ from train import train_test_eval, feature_pruning
 from model_class import FirstANN, DynamicANN, RNN, LSTM
 
 
-"""
-# Visualize model performance, and
-# calculate R-Squared value
-r2metric = R2Score(device=device)
-full_data, _ = prepare_data(site, no_split=True)
-full_df = full_data.df
-eval_dataloader = DataLoader(full_data, batch_size=len(full_data), shuffle=False)
-X, _y = next(iter(eval_dataloader))
-pred : torch.Tensor = model(X)
-r2metric.update(input=pred, target=_y)
-print(f"The model achieves an r-squared value of {r2metric.compute().item():.4f}")
-pred_s = [a[0] for a in pred.detach().numpy()]
-y = full_df['NEE'].to_list()
-dates = pd.to_datetime(full_df['DAY'], format="%Y%m%d").to_list()
-x = [d.date() for d in dates]
-
-plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%m/%d/%Y"))
-plt.gca().xaxis.set_major_locator(mdates.DayLocator())
-limit = 365
-plt.plot(x[:limit], y[:limit], label='Actual NEE')
-plt.plot(x[:limit], pred_s[:limit], label='Predicted NEE')
-plt.xticks([x[i] for i in range(0, limit, limit//10)])
-plt.gcf().autofmt_xdate()
-plt.ylabel("NEE")
-plt.legend()
-plt.title('NEE Model Predictions')
-plt.show()
-"""
-
 
 def test_tte():
     simple_cols = ['P', 'PPFD_IN']
     # This should take little time to run
     #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
     #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
+    # test time series + flatten for linear models
+    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7, flatten=True)
     # test time series data preparation and RNN predictor model
     train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
     train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=50)
@@ -59,7 +32,7 @@ def best_vanilla_network_search(site, input_columns, stat_interval=None):
                     batch_size=[32,64],
                     stat_interval=stat_interval)
     
-def best_rnn_search(site, input_columns, model_class = LSTM):
+def best_rnn_search(site, input_columns, model_class = LSTM, sequence_length = None):
     train_test_eval(model_class,
                     num_folds=7,
                     epochs=[100,200,300],
@@ -67,7 +40,7 @@ def best_rnn_search(site, input_columns, model_class = LSTM):
                     input_columns=input_columns,
                     lr=[1e-2, 1e-3],
                     batch_size=[32,64],
-                    sequence_length=[7,14,31,62,124], # 1 year is too long...
+                    sequence_length=[7,14,31,62,124] if sequence_length is None else sequence_length, # 1 year is too long...
                     hidden_state_size=[4,8,15],
                     num_layers=[1,2,3],
                     dropout=[0.0, 0.01, 0.1],
@@ -117,14 +90,15 @@ def main():
     for bad_col in bad_columns:
         input_columns.remove(bad_col)
     #feature_pruning(DynamicANN, site, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6), input_columns=input_columns)
+    #train_test_eval(DynamicANN, site=site, input_columns=me2_input_column_set, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6))
 
-    #test_tte()
+    test_tte()
 
-    best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
+    #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
 
-    best_rnn_search(site, me2_input_column_set, model_class=LSTM)
-    best_rnn_search(site, me2_input_column_set, model_class=RNN)
-    #train_test_eval(RNN, time_series=True, sequence_length=50, num_folds=5, epochs=300, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=1, num_layers=2)
+    #best_rnn_search(site, me2_input_column_set, model_class=LSTM)
+    #best_rnn_search(site, me2_input_column_set, model_class=RNN)
+    #train_test_eval(RNN, time_series=True, sequence_length=31, num_folds=5, epochs=300, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=1)
 
                 
 if __name__=="__main__":

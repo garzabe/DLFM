@@ -120,6 +120,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     input_columns = kwargs.get('input_columns', df.columns)
     time_series = kwargs.get('time_series', False)
     sequence_length = kwargs.get('sequence_length', -1)
+    flatten = kwargs.get('flatten', False)
 
     # if we want time series data, then jump to the time series data preparator instead
     #if time_series:
@@ -140,10 +141,11 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
 
 
     # drop all rows where ustar is not sufficient
+    # TODO: does USTAR apply to just NEE or all input variables @Loren
     df = df[df['USTAR'] > 0.2].drop(columns=['USTAR'])
     #print(f"Dropped {_nrows - len(df)}  rows with USTAR threshold ({len(df)})")
     
-
+    # daylight hours
     df = df[df['PPFD_IN'] > 4.0]
 
     _nrows = len(df)
@@ -161,6 +163,8 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     # perfect recording is 48 per day
     # with ~9 hours of daylight, the max daylight rows is 18
     _nrows = len(df_avg)
+    # TODO: if there aren't enough readings in a day and its surrounded by good days, impute from the surrounding days
+    # is very local linear interp okay @Loren ?
     min_count = 5
     #print(df_count.head())
     min_count_filter = df_count.drop(columns=['DAY']) >= min_count
@@ -224,7 +228,23 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         dates_eval = np.array(dates[eval_idx:])
         train_years_idx = years_idx[0:eval_idx]
         eval_years_idx = years_idx[eval_idx:]
-        return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
+        if flatten:
+            train_size = len(X_train)
+            eval_size = len(X_eval)
+            input_size = len(X_train[0][0])
+            X_df_train = pd.DataFrame(X_train.reshape((train_size, sequence_length*input_size)))
+            y_df_train = pd.DataFrame(y_train.reshape((train_size, 1)), columns=['NEE'])
+            dates_df_train = pd.DataFrame(dates_train.reshape((train_size, 1)), columns=['DAY'])
+            df_train = pd.concat([X_df_train, y_df_train, dates_df_train], axis=1)
+
+            X_df_eval = pd.DataFrame(X_eval.reshape((eval_size, sequence_length*input_size)))
+            y_df_eval = pd.DataFrame(y_eval.reshape((eval_size, 1)), columns=['NEE'])
+            dates_eval = pd.DataFrame(dates_eval.reshape((eval_size, 1)), columns=['DAY'])
+            df_eval = pd.concat([X_df_eval, y_df_eval, dates_eval], axis=1)
+            print(df_train.head())
+            return AmeriFLUXLinearDataset(df_train), AmeriFLUXLinearDataset(df_eval)
+        else:
+            return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
 
     else:
         eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
