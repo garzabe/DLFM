@@ -255,6 +255,8 @@ Dropout: {candidate['dropout']}
     dates = train_data.get_dates(test_idx)
     test_loader = DataLoader(train_data, batch_size=len(dates), shuffle=False)#, sampler=test_subsampler)
     X, _y = next(iter(test_loader))
+    X = X.to(device)
+    _y = _y.to(device)
     _y_pred : torch.Tensor = model(X)
     y_pred = [a[0] for a in _y_pred.detach().numpy()]
     y = [a[0] for a in _y.detach().numpy()]

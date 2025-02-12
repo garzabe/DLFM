@@ -14,7 +14,7 @@ class NEPModel(nn.Module, ABC):
 # these don't work in the pytorch framework
 
 # TODO: xLSTM, standard LSTM, 1d CNN
-# LSTM, RNN, xLSTM, CNN, 
+#  xLSTM, CNN, 
 
 class FirstANN(NEPModel):
     def __init__(self, num_features : int, **kwargs):
