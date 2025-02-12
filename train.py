@@ -258,8 +258,8 @@ Dropout: {candidate['dropout']}
     X = X.to(device)
     _y = _y.to(device)
     _y_pred : torch.Tensor = model(X)
-    y_pred = [a[0] for a in _y_pred.detach().numpy()]
-    y = [a[0] for a in _y.detach().numpy()]
+    y_pred = [a[0] for a in _y_pred.detach().cpu().numpy()]
+    y = [a[0] for a in _y.detach().cpu().numpy()]
     x = [d.date() for d in dates]
 
     plt.clf()
