@@ -25,6 +25,14 @@ class AmeriFLUXDataset(Dataset, ABC):
     def __getitem__(self, idx):
         pass
 
+    @abstractmethod
+    def get_X(self) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def get_y(self) -> np.ndarray:
+        pass
+
 class AmeriFLUXLinearDataset(Dataset):
     def __init__(self, df_X_y : pd.DataFrame):
         # hold onto the original dataframe
@@ -94,6 +102,12 @@ class AmeriFLUXSequenceDataset(Dataset):
     
     def get_dates(self, idx_range : list[int]):
         return [self.dates[i] for i in idx_range]
+    
+    def get_X(self):
+        return self.inputs
+    
+    def get_y(self):
+        return self.labels
 
 def get_data(site : Site):
     if not isinstance(site, Site):

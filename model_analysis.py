@@ -2,7 +2,7 @@ from torch import nn
 
 from data_handler import  Site, get_site_vars
 from train import train_test_eval, feature_pruning
-from model_class import FirstANN, DynamicANN, RNN, LSTM
+from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest
 
 
 
@@ -16,6 +16,12 @@ def test_tte():
     # test time series data preparation and RNN predictor model
     train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
     train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=50)
+
+def test_sklearn():
+    simple_cols=['P','PPFD_IN']
+
+    train_test_eval(XGBoost, num_folds=2, site=Site.Me2, input_columns=simple_cols, lr=[0.1, 1], n_estimators=[10,100], sklearn_model=True)
+    train_test_eval(RandomForest, num_folds=2, site=Site.Me2, input_columns=simple_cols, n_estimators=[10,100], sklearn_model=True)
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -92,7 +98,10 @@ def main():
     #feature_pruning(DynamicANN, site, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6), input_columns=input_columns)
     #train_test_eval(DynamicANN, site=site, input_columns=me2_input_column_set, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6))
 
-    test_tte()
+    #test_sklearn()
+    #test_tte()
+    train_test_eval(XGBoost, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, lr=[0.01, 0.1, 1], n_estimators=[10,100, 1000], sklearn_model=True)
+    train_test_eval(RandomForest, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, n_estimators=[10,100, 1000], sklearn_model=True)
 
     #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
 

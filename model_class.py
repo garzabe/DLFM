@@ -2,6 +2,8 @@ import torch
 from torch import nn
 from typing import Callable
 from abc import ABC, abstractmethod
+from xgboost import XGBRegressor
+from sklearn.ensemble import RandomForestRegressor
 
 # each class should have an __init__
 class NEPModel(nn.Module, ABC):
@@ -103,3 +105,42 @@ class LSTM(NEPModel):
         _x = self.relu(_x)
         y = self.linear(_x)
         return y[0]
+
+
+#-------------------------
+class XGBoost():
+    def __init__(self, learning_rate=None, n_estimators=None, **kwargs):
+        # TODO: manually process model kwargs
+        model_kwargs = {}
+        if learning_rate is not None:
+            model_kwargs['learning_rate'] = learning_rate
+        if n_estimators is not None:
+            model_kwargs['n_estimators'] = n_estimators
+        self.model : XGBRegressor = XGBRegressor(**model_kwargs)
+
+    def fit(self, X, y):
+        return self.model.fit(X, y)
+
+    def predict(self, X):
+        return self.model.predict(X)
+    
+    # allows the model to be used as a callable simiar to nn.Module
+    def __call__(self, X):
+        return self.model.predict(X)
+    
+class RandomForest():
+    def __init__(self, n_estimators=None, **kwargs):
+        model_kwargs = {}
+        if n_estimators is not None:
+            model_kwargs['n_estimators'] = n_estimators
+        # TODO: process kwargs for randomforest relevant kwargs
+        self.model : RandomForestRegressor = RandomForestRegressor(**model_kwargs)
+
+    def fit(self, X, y):
+        return self.model.fit(X, y)
+    
+    def predict(self, X):
+        return self.model.predict(X)
+    
+    def __call__(self, X):
+        return self.model.predict(X)
