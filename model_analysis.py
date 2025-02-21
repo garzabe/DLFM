@@ -9,18 +9,27 @@ from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest
 def test_tte():
     simple_cols = ['P', 'PPFD_IN']
     # This should take little time to run
-    #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
-    #train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
+    print("TTE with DynamicANN")
+    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64)
+    print("TTE with DynamicANN & multiple stat intervals")
+    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
+    print("TTE with DynamicANN & ustar=na")
+    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, ustar='na')
     # test time series + flatten for linear models
+    print("TTE with DynamicANN & flattened time series data")
     train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7, flatten=True)
     # test time series data preparation and RNN predictor model
+    print("TTE with RNN")
     train_test_eval(RNN, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7)
+    print("TTE with LSTM")
     train_test_eval(LSTM, num_folds=2, epochs=1, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=50)
 
 def test_sklearn():
     simple_cols=['P','PPFD_IN']
 
+    print("TTE with XGBoost")
     train_test_eval(XGBoost, num_folds=2, site=Site.Me2, input_columns=simple_cols, lr=[0.1, 1], n_estimators=[10,100], sklearn_model=True)
+    print("TTE with RandomForest")
     train_test_eval(RandomForest, num_folds=2, site=Site.Me2, input_columns=simple_cols, n_estimators=[10,100], sklearn_model=True)
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
@@ -98,16 +107,17 @@ def main():
     #feature_pruning(DynamicANN, site, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6), input_columns=input_columns)
     #train_test_eval(DynamicANN, site=site, input_columns=me2_input_column_set, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6))
 
+    
     #test_sklearn()
     #test_tte()
-    train_test_eval(XGBoost, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, lr=[0.01, 0.1, 1], n_estimators=[10,100, 1000], sklearn_model=True)
-    train_test_eval(RandomForest, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, n_estimators=[10,100, 1000], sklearn_model=True)
+    #train_test_eval(XGBoost, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, lr=[0.5, 0.9, 1], n_estimators=[100, 1000, 10000], sklearn_model=True)
+    #train_test_eval(RandomForest, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, n_estimators=[10,100, 1000], sklearn_model=True)
 
     #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
 
     #best_rnn_search(site, me2_input_column_set, model_class=LSTM)
     #best_rnn_search(site, me2_input_column_set, model_class=RNN)
-    #train_test_eval(RNN, time_series=True, sequence_length=31, num_folds=5, epochs=300, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=1)
+    train_test_eval(RNN, time_series=True, sequence_length=60, num_folds=5, epochs=300, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=1, ustar='na')
 
                 
 if __name__=="__main__":

@@ -11,7 +11,21 @@ import matplotlib.dates as mdates
 from sklearn.metrics import r2_score
 
 from data_handler import AmeriFLUXDataset, prepare_data, Site, get_site_vars
+from model_class import MODEL_HYPERPARAMETERS
 
+HYPERPARAMETER_NAMES = {
+    'epochs' : {'title' : 'Epochs', 'abbreviation' : "EP"},
+    'lr' : {'title' : 'Learning Rate', 'abbreviation' : 'LR'},
+    'batch_size' : {'title' : 'Batch Size', 'abbreviation' : "BS"},
+    'activation_fn' : {'title' : 'Activation Function', 'abbreviation' : "F"},
+    'layer_dims' : {'title' : 'Layer Dimensions', 'abbreviation' : 'LD'},
+    'stat_interval' : {'title' : 'Rolling Statistics Interval', 'abbreviation' : 'SI'},
+    'sequence_length' : {'title' : 'Time Series Sequence Length', 'abbreviation' : 'SL'},
+    'hidden_state_size' : {'title' : 'Hidden State Size', 'abbreviation' : 'H'},
+    'num_layers' : {'title' : 'Number Hidden Layers', 'abbreviation' : 'L'},
+    'dropout' : {'title' : 'Dropout', 'abbreviation' : 'D'},
+    'n_estimators' : {'title': 'Number Estimators', 'abbreviation': 'NE'}
+}
 
 ##### Base Train, Test, Eval functions #######
 def train(dataloader : DataLoader,
@@ -66,10 +80,11 @@ def train_kfold(num_folds : int,
                 model_class : Type[nn.Module],
                 lr : float, bs : int, epochs : int, loss_fn : Callable,
                 train_data : AmeriFLUXDataset,
-                device, num_features, sklearn_model=False,
+                device, num_features,
                 **model_kwargs) -> float:
 
     r2_results = {}
+    sklearn_model = model_class.__name__ in ['XGBoost', 'RandomForest']
 
     # use our own fold indexing
     for fold in range(num_folds):
@@ -142,53 +157,61 @@ def train_kfold(num_folds : int,
 
 
 def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
+    model_name = model_class.__name__
+
     # Accepted kwargs
-    
     num_folds = kwargs.get('num_folds', 5)
     input_columns = kwargs.get('input_columns', [])
     site = kwargs.get('site', Site.Me2)
-    sklearn_model = kwargs.get('sklearn_model', False)
     
-    # Optimizable hyperparameters - provide a list of test values if we want to tune, otherwise provide a single value
-    epochs = kwargs.get('epochs', 100)
-    layer_dims = kwargs.get('layer_dims', (4,6))
-    activation_fn = kwargs.get('activation_fn', nn.ReLU)
-    lr = kwargs.get('lr', 1e-2)
-    batch_size = kwargs.get('batch_size', 64)
+    sklearn_model = model_name=='XGBoost' or model_name=='RandomForest'
+
+    model_hparams = MODEL_HYPERPARAMETERS[model_name]
+    
     skip_eval = kwargs.get('skip_eval', False)
-    stat_interval =  kwargs.pop('stat_interval', None)
-    sequence_length = kwargs.pop('sequence_length', 7)
     time_series = kwargs.get('time_series', False)
     flatten = kwargs.get('flatten', False)
-    hidden_state_size = kwargs.get('hidden_state_size', 8)
-    num_layers = kwargs.get('num_layers', 1)
-    dropout = kwargs.get('dropout', 0.0)
-    n_estimators = kwargs.get('n_estimators', 100)
+    
 
     # 2. Initialize the model
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     loss_fn = nn.MSELoss()
 
-    # Construct the test combinations to test
-    epochs_list = epochs if isinstance(epochs, list) else [epochs]
-    layer_dims_list = layer_dims if isinstance(layer_dims, list) else [layer_dims]
-    activation_fn_list = activation_fn if isinstance(activation_fn, list) else [activation_fn]
-    lr_list = lr if isinstance(lr, list) else [lr]
-    batch_size_list = batch_size if isinstance(batch_size, list) else [batch_size]
-    stat_interval_list = stat_interval if isinstance(stat_interval, list) else [stat_interval]
-    sequence_length_list = sequence_length if isinstance(sequence_length, list) else [sequence_length]
-    hidden_state_list = hidden_state_size if isinstance(hidden_state_size, list) else [hidden_state_size]
-    num_layers_list = num_layers if isinstance(num_layers, list) else [num_layers]
-    dropout_list = dropout if isinstance(dropout, list) else [dropout]
-    estimators_list = n_estimators if isinstance(n_estimators, list) else [n_estimators]
 
-    if time_series:
-        data_candidates = [{'sequence_length': sl} for sl in sequence_length_list]
-    else:
-        data_candidates = [{'stat_interval': si} for si in stat_interval_list]
+
+    # Construct the test combinations to test
+    data_hparams = ['sequence_length', 'stat_interval']
+    hparam_lists = []
+    data_hparam_lists = []
+    for hparam, default in model_hparams.items():
+        # Collect the desired set of values/single value for the hparam from kwargs
+        hparam_kwarg = kwargs.get(hparam, default)
+        # Ensure it is in a list
+        _hparam_list = hparam_kwarg if isinstance(hparam_kwarg, list) else [hparam_kwarg]
+        # Build a list of the form [{hparam: val1}, {hparam: val2}, ...]
+        hparam_list = []
+        for hparam_val in _hparam_list:
+            hparam_list.append({hparam: hparam_val})
+        # add to data hparams or model hparams
+        if hparam in data_hparams:
+            kwargs.pop(hparam, None)
+            data_hparam_lists.append(hparam_list)
+        else:
+            hparam_lists.append(hparam_list)
+
+    data_candidates = []
+    # key_values is a list of individual dictionaries with hyperparameter names and values
+    for key_values in itertools.product(*data_hparam_lists):
+        data_candidate = {}
+        for key_value in key_values:
+            data_candidate.update(key_value)
+        data_candidates.append(data_candidate)
+
     candidates = []
-    for e, ld, af, l, bs, hs, nl, d, ne in itertools.product(epochs_list, layer_dims_list, activation_fn_list, lr_list, batch_size_list, hidden_state_list, num_layers_list, dropout_list, estimators_list):
-        candidate = {"epochs": e, "layer_dims": ld, "activation_fn": af, "lr": l, "batch_size": bs, "hidden_state_size": hs, 'num_layers': nl, 'dropout': d, 'n_estimators': ne}
+    for key_values in itertools.product(*hparam_lists):
+        candidate = {}
+        for key_value in key_values:
+            candidate.update(key_value)
         candidates.append(candidate)
 
     print(f"Running K-Fold Cross Validation on {len(candidates)*len(data_candidates)} different hyperparameter configurations")
@@ -197,47 +220,34 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
     data_best = None
     max_r2 = -np.inf
     for data_candidate in data_candidates:
+        hparam_print = "Hyperparameters:\n"
+        for key, val in data_candidate.items():
+            hparam_print += f"{HYPERPARAMETER_NAMES[key]['title']}: {val}\n"
+        
         if time_series:
-            train_data, _ = prepare_data(site, sequence_length=data_candidate['sequence_length'], **kwargs)
+            train_data, _ = prepare_data(site, **data_candidate, **kwargs)
         else:
-            train_data, _ = prepare_data(site, stat_interval=data_candidate['stat_interval'], **kwargs)
+            train_data, _ = prepare_data(site, **data_candidate, **kwargs)
         if train_data == None or len(train_data) == 0 or train_data.get_num_years() <= 1:
             print("Training set does not have enough data. Skipping this candidate...")
             continue
-        num_features = len(input_columns)*(3 if not time_series and data_candidate['stat_interval'] is not None else 1)
+        print(time_series)
+        num_features = len(input_columns)*(3 if not time_series and 'stat_interval' in data_candidate.keys() and data_candidate['stat_interval'] is not None else 1)
         for candidate in candidates:
-            if time_series:
-                print(f"""Hyperparameters:
-Sequence Length: {data_candidate['sequence_length']}
-Learning Rate: {candidate['lr']}
-Batch Size: {candidate['batch_size']}
-Epochs: {candidate['epochs']}
-Layer Dimensions: {candidate['num_layers']} x {candidate['hidden_state_size']}
-Activation Function: {candidate['activation_fn'].__name__}
-Dropout: {candidate['dropout']}
-""")
-            else:
-                print(f"""Hyperparameters:
-Stat Interval: {data_candidate['stat_interval']}
-Learning Rate: {candidate['lr']}
-Batch Size: {candidate['batch_size']}
-Epochs: {candidate['epochs']}
-Layer Dimensions: {candidate['layer_dims']}
-Activation Function: {candidate['activation_fn'].__name__}
-Dropout: {candidate['dropout']}
-N_Estimators: {candidate['n_estimators']}
-""")
+            candidate_suffix = ''
+            for key, val in candidate.items():
+                candidate_suffix += f"{HYPERPARAMETER_NAMES[key]['title']}: {val}\n"
+            print(hparam_print + candidate_suffix)
+            candidate_subset = dict(candidate).copy()
+            candidate_subset.pop('lr', None)
+            candidate_subset.pop('batch_size', None)
+            candidate_subset.pop('epochs', None)
             r2, ci_low = train_kfold(min(num_folds, train_data.get_num_years()), model_class,
-                            candidate['lr'],
-                            candidate['batch_size'],
-                            candidate['epochs'],
+                            candidate.get('lr', -1),
+                            candidate.get('batch_size', -1),
+                            candidate.get('epochs', -1),
                             loss_fn, train_data, device, num_features*data_candidate['sequence_length'] if time_series and flatten else num_features,
-                            layer_dims=candidate['layer_dims'],
-                            activation_fn=candidate['activation_fn'],
-                            hidden_state_size=candidate['hidden_state_size'],
-                            num_layers=candidate['num_layers'],
-                            dropout=candidate['dropout'], n_estimators=candidate['n_estimators'],
-                            sklearn_model=sklearn_model)
+                            **candidate_subset)
             history.append(candidate | data_candidate | {'train_size' : len(train_data)})
             history[-1]['r2'] = r2
             history[-1]['ci_low'] = ci_low
@@ -255,17 +265,17 @@ N_Estimators: {candidate['n_estimators']}
     # 3. Train with final hparam selections
     print("Training the best performing model on the entire training set")
     if time_series:
-        train_data, _ = prepare_data(site, sequence_length=data_best['sequence_length'], **kwargs)
+        train_data, _ = prepare_data(site, **data_best, **kwargs)
     else:
-        train_data, _ = prepare_data(site, stat_interval=data_best['stat_interval'], **kwargs)
-    num_features = len(input_columns)*(3 if not time_series and data_best['stat_interval'] is not None else 1)
+        train_data, _ = prepare_data(site, **data_best, **kwargs)
+    num_features = len(input_columns)*(3 if not time_series and 'stat_interval' in data_best.keys() and data_best['stat_interval'] is not None else 1)
     if sklearn_model:
-        model = model_class(learning_rate=best['lr'], n_estimators=best['n_estimators'])
+        model = model_class(**best)
         X = train_data.get_X()
         y = train_data.get_y()
         model.fit(X, y)
     else:
-        model : nn.Module = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, layer_dims=best['layer_dims'], activation_fn=best['activation_fn'], batch_size=best['batch_size'], num_layers=best['num_layers'], hidden_state_size=best['hidden_state_size'], dropout=best['dropout']).to(device)
+        model : nn.Module = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, **best).to(device)
         train_loader = DataLoader(train_data, batch_size=best['batch_size'])
         optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
         for t in range(best['epochs']):
@@ -274,17 +284,23 @@ N_Estimators: {candidate['n_estimators']}
 
 
     # visualize the training performance of the final model across time
-    _, test_idx = train_data.get_train_test_idx(0)
+    dt = datetime.datetime.now()
+    plot_predictions(f'images/trainplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', model, train_data, best, device)
+
+    return model, best | data_best, history
+
+def plot_predictions(file : str, model, data : AmeriFLUXDataset, hyperparams : dict, device : str):
+    _, test_idx = data.get_train_test_idx(0)
     # option: look at just the final ~6 months
     #test_idx = test_idx[-len(test_idx)//2:]
     test_subsampler = SubsetRandomSampler(test_idx)
-    dates = train_data.get_dates(test_idx)
-    if sklearn_model:
-        X = [train_data.get_X()[idx] for idx in test_idx]
-        y = [train_data.get_y()[idx] for idx in test_idx]
+    dates = data.get_dates(test_idx)
+    if model.__class__.__name__ in ['XGBoost', 'RandomForest']:
+        X = [data.get_X()[idx] for idx in test_idx]
+        y = [data.get_y()[idx] for idx in test_idx]
         y_pred = model(X)
     else:
-        test_loader = DataLoader(train_data, batch_size=len(dates), shuffle=False)#, sampler=test_subsampler)
+        test_loader = DataLoader(data, batch_size=len(dates), shuffle=False)#, sampler=test_subsampler)
         X, _y = next(iter(test_loader))
         X = X.to(device)
         _y = _y.to(device)
@@ -303,14 +319,22 @@ N_Estimators: {candidate['n_estimators']}
     plt.ylabel("NEE")
     plt.legend()
     plt.title('NEE Model Predictions on final year of train data')
-    if time_series:
-        plt.suptitle(f"{type(model).__name__} | LR: {best['lr']:.2f} | BS: {best['batch_size']} | EP: {best['epochs']} | L: {best['num_layers']} x {best['hidden_state_size']} | Seq: {data_best['sequence_length']} | D: {best['dropout']:.1f}")
-    else:
-        plt.suptitle(f"{type(model).__name__} | LR: {best['lr']:.2f} | BS: {best['batch_size']} | EP: {best['epochs']} | L: {best['layer_dims']} | Seq: {data_best['stat_interval']}")
+    subtitle = f"{type(model).__name__}"
+    for hparam, value in hyperparams.items():
+        if hparam=='r2':
+            continue
+        abbr = HYPERPARAMETER_NAMES[hparam]['abbreviation']
+        if isinstance(value, float):
+            val_fs = f'{value:.2f}'
+        elif isinstance(value, Callable):
+            val_fs = f'{value.__name__}'
+        else:
+            val_fs = f'{value}'
+        subtitle += f' | {abbr}: {val_fs}'
+    plt.suptitle(subtitle)
     dt = datetime.datetime.now()
-    plt.savefig(f'images/plot-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.png')
-
-    return model, best | data_best, history
+    name = model.__class__.__name__
+    plt.savefig(file)
 
 def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> list[str]:
     input_columns : list[str] = kwargs.get('input_columns', None)
@@ -380,14 +404,13 @@ def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> lis
     return pruned_columns
     
 
-
-
 def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     num_folds = kwargs.get('num_folds', 5)
     site = kwargs.get('site', Site.Me2)
     input_columns=kwargs.get('input_columns', [])
     time_series = kwargs.get('time_series', False)
-    sklearn_model = kwargs.get('sklearn_model', False)
+    model_name = model_class.__name__
+    sklearn_model = model_name in ['XGBoost', 'RandomForest']
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
     final_model, hparams, history = train_hparam(model_class, **kwargs)
@@ -396,35 +419,60 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         return -np.inf
 
     # Evaluate the final model on the evaluation set
+    data_kwargs = kwargs.copy()
+    data_kwargs.update(hparams)
     if time_series:
         kwargs.pop('sequence_length', None)
-        _, eval_data = prepare_data(site, sequence_length=hparams['sequence_length'], **kwargs)
+        _, eval_data = prepare_data(site, **data_kwargs)
     else:
         kwargs.pop('stat_interval', None)
-        _, eval_data = prepare_data(site, stat_interval=hparams['stat_interval'], **kwargs)
+        _, eval_data = prepare_data(site, **data_kwargs)
 
     if sklearn_model:
         y = eval_data.get_y()
         y_pred = final_model(eval_data.get_X())
         r2eval = r2_score(y, y_pred)
+        device = None
     else:
         eval_loader = DataLoader(eval_data, batch_size=64)
         device = ("cuda" if torch.cuda.is_available() else "cpu")
         r2metric = R2Score(device=device)
         r2eval =  eval(eval_loader, final_model, r2metric, device)
 
-    # write the results to an output file
     dt = datetime.datetime.now()
-    with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}::{dt.hour:02}:{dt.minute:02}:{dt.second:02}.md", 'w') as f:
+    # plot evaluation performance
+    plot_predictions(f'images/evalplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', final_model, eval_data, hparams, device)
+
+    # write the results to an output file
+    with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.md", 'w') as f:
         f.write("### K-Fold Cross-Validation History\n\n")
-        f.write(f'## {final_model.__class__.__name__}\n\n')
+        f.write(f'## {model_name}\n\n')
         f.write(f"Folds: {num_folds}\n\n")
 
-        f.write('| Training Set Size | Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Dropout | N Estimators | Average R-Squared |\n')
-        f.write('| --- | --- | --- | --- | --- | --- | --- | --- |\n')
-        for candidate in history:
-            f.write(f"| {candidate['train_size']} | {candidate['num_layers'], candidate['hidden_state_size'] if time_series else candidate['layer_dims']} | {candidate['activation_fn'].__name__} | {candidate['lr']} | {candidate['batch_size']} | {candidate['epochs']} | {candidate['sequence_length'] if time_series else candidate['stat_interval']} | {candidate['dropout']:.2f} | {candidate['n_estimators']} | {candidate['r2']:.4f} |\n")
+        table_head = '|'
+        head_border = '|'
+        for hparam in hparams.keys():
+            if hparam=='r2':
+                continue
+            title = HYPERPARAMETER_NAMES[hparam]['title']
+            table_head += f' {title} |'
+            head_border += ' --- |'
+        #table_head += ' Average R-Squared |'
+        #head_border += ' --- |'
 
+        f.write(f'{table_head} Average R-Squared |\n')
+        f.write(f'{head_border} --- |\n')
+        for candidate in history:
+            row = '|'
+            for value in candidate.values():
+                if isinstance(value, float):
+                    row += f' {value:.2f} |'
+                elif isinstance(value, Callable):
+                    row += f' {value.__name__} |'
+                else:
+                    row += f' {value} |'
+            f.write(f"{row}\n")
+            
         f.write('\n')
         f.write("### Best Model Evaluation\n\n")
         model_str_lines = str(final_model).splitlines()
@@ -434,8 +482,17 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         f.write(f'{model_str_lines[-1]}\n~~~')
         f.write('\n\n')
 
-        f.write('| Layer Dimensions | Activation Function | Learning Rate | Batch Size | Epochs | Time Series Interval (days) | Dropout | N Estimators | Evaluation R-Squared |\n')
-        f.write('| --- | --- | --- | --- | --- | --- | --- |\n')
-        f.write(f"| {hparams['num_layers'], hparams['hidden_state_size'] if time_series else hparams['layer_dims']} | {hparams['activation_fn'].__name__} | {hparams['lr']} | {hparams['batch_size']} | {hparams['epochs']} | {hparams['sequence_length'] if time_series else hparams['stat_interval']} | {hparams['dropout']:.2f} | {candidate['n_estimators']} | {r2eval:.4f} |\n")
+        f.write(f'{table_head} Evaluation R-Squared |\n')
+        f.write(f'{head_border} --- |\n')
+
+        row = '|'
+        for value in hparams.values():
+            if isinstance(value, float):
+                row += f' {value:.2f} |'
+            elif isinstance(value, Callable):
+                row += f' {value.__name__}'
+            else:
+                row += f' {value} |'
+        f.write(f"{row} {r2eval:.3f} |\n")
     
     return r2eval

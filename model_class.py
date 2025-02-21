@@ -5,6 +5,22 @@ from abc import ABC, abstractmethod
 from xgboost import XGBRegressor
 from sklearn.ensemble import RandomForestRegressor
 
+
+# This dictionary has a lot of use-cases:
+# train_hparams queries this to determine which kwargs it should look for, and what values to default to for each model
+# plot_predictions uses this to determine what hyperparameters to write in the subtitle
+# train_test_eval uses this similarly, to determine how to build the history table
+
+MODEL_HYPERPARAMETERS : dict[str, dict[str, int | tuple[int] | Callable | None]] = {
+    'XGBoost' : {'lr' : 0.5, 'n_estimators' : 100},
+    'RandomForest' : {'n_estimators' : 100},
+    'FirstANN' : {'epochs' : 100, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'stat_interval' : None, 'sequence_length' : None},
+    'DynamicANN' : {'layer_dims' : (4,6), 'epochs' : 100, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'stat_interval' : None, 'sequence_length' : None},
+    'RNN' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 100, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'sequence_length' : 14},
+    'LSTM' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 100, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'sequence_length' : 14, 'dropout' : 0.0},
+    'xLSTM' : {}
+}
+
 # each class should have an __init__
 class NEPModel(nn.Module, ABC):
 
@@ -12,11 +28,6 @@ class NEPModel(nn.Module, ABC):
     def forward(self, x):
         pass
 
-# TODO: implement Random Forest, XGBoost architectures
-# these don't work in the pytorch framework
-
-# TODO: xLSTM, standard LSTM, 1d CNN
-#  xLSTM, CNN, 
 
 class FirstANN(NEPModel):
     def __init__(self, num_features : int, **kwargs):
@@ -106,14 +117,20 @@ class LSTM(NEPModel):
         y = self.linear(_x)
         return y[0]
 
+# TODO: xLSTMMixer
+class xLSTM(NEPModel):
+
+    def __init__(self):
+        pass
+
 
 #-------------------------
 class XGBoost():
-    def __init__(self, learning_rate=None, n_estimators=None, **kwargs):
+    def __init__(self, lr=None, n_estimators=None, **kwargs):
         # TODO: manually process model kwargs
         model_kwargs = {}
-        if learning_rate is not None:
-            model_kwargs['learning_rate'] = learning_rate
+        if lr is not None:
+            model_kwargs['learning_rate'] = lr
         if n_estimators is not None:
             model_kwargs['n_estimators'] = n_estimators
         self.model : XGBRegressor = XGBRegressor(**model_kwargs)
@@ -127,6 +144,9 @@ class XGBoost():
     # allows the model to be used as a callable simiar to nn.Module
     def __call__(self, X):
         return self.model.predict(X)
+    
+    def __str__(self):
+        return str(self.model)
     
 class RandomForest():
     def __init__(self, n_estimators=None, **kwargs):
@@ -144,3 +164,6 @@ class RandomForest():
     
     def __call__(self, X):
         return self.model.predict(X)
+    
+    def __str__(self):
+        return str(self.model)

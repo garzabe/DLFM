@@ -135,6 +135,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     time_series = kwargs.get('time_series', False)
     sequence_length = kwargs.get('sequence_length', -1)
     flatten = kwargs.get('flatten', False)
+    ustar = kwargs.get('ustar', 'drop') # defines the method of handling low ustar entries: current possible values are: drop, na
 
     # if we want time series data, then jump to the time series data preparator instead
     #if time_series:
@@ -156,7 +157,8 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
 
     # drop all rows where ustar is not sufficient
     # TODO: does USTAR apply to just NEE or all input variables @Loren
-    df = df[df['USTAR'] > 0.2].drop(columns=['USTAR'])
+    if ustar == 'drop':
+        df = df[df['USTAR'] > 0.2]
     #print(f"Dropped {_nrows - len(df)}  rows with USTAR threshold ({len(df)})")
     
     # daylight hours
@@ -173,27 +175,48 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     df_avg = df.groupby('DAY').aggregate('mean').reset_index()
     df_count = df.groupby('DAY').aggregate('count').reset_index()
 
+    # TODO: if we can interpolate
+    if False:
+        date_diffs = pd.DataFrame(df_avg['DAY'])
+        date_diffs['TIMEDIFF'] = date_diffs['DAY'].diff()
+        # Day | timediff between Day and previous row Day
+        # if 
+        single_day_gaps = (date_diffs['TIMEDIFF'] == pd.Timedelta(days=2))
+        # insert the single days between single-day gaps and interpolate values (except NEE)
+        prev_days = pd.DataFrame(columns=df_avg.columns)
+        prev_days_count = pd.DataFrame(columns=df_count.columns)
+        # now we have all missing single-gap days in the form of the df_avg dataframe
+        prev_days['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
+        prev_days_count['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
+        prev_days_count.fillna(1)
+        
+        df_avg = pd.concat([df_avg, prev_days]).sort_values(by='DAY').interpolate(limit=1)
+        df_count = pd.concat([df_count, prev_days_count]).sort_values(by='DAY')
+
+
     # now only include the days where all column counts are above 20??
     # perfect recording is 48 per day
     # with ~9 hours of daylight, the max daylight rows is 18
     _nrows = len(df_avg)
     # TODO: if there aren't enough readings in a day and its surrounded by good days, impute from the surrounding days
     # is very local linear interp okay @Loren ?
-    min_count = 5
+    min_count = 1
     #print(df_count.head())
     min_count_filter = df_count.drop(columns=['DAY']) >= min_count
     #print(df_avg[~min_count_filter])
     df_X_y = df_avg[min_count_filter.all(axis=1)]
+    # remove any NEE values with ustar below threshold
+    if ustar=='na':
+        df_X_y[df_X_y['USTAR'] <= 0.2]['NEE'] = np.NaN
     #print(df_X_y.head())
     #df_X_y = df_X_y.drop(columns=['DAY'])
-    print(len(df_X_y))
     if len(df_X_y) == 0:
         print("No data after filtering")
         return None, None
 
     # normalize all data
     # add these columns back at the end
-    _df = df_X_y.drop(columns=["DAY", "NEE"])
+    _df = df_X_y.drop(columns=["DAY", "NEE", "USTAR"])
     _df = (_df - _df.mean())/_df.std()
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
@@ -204,7 +227,6 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         y_dataset = []
         years_idx = []
         dates = []
-        print("Building dataset")
         # TODO: is there a way to hack the rolling window to quicky generate the sequence data we need?
         #print(pd.DataFrame(df.rolling(window=sequence_length)))
         # This doesn't work
@@ -255,7 +277,6 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
             y_df_eval = pd.DataFrame(y_eval.reshape((eval_size, 1)), columns=['NEE'])
             dates_eval = pd.DataFrame(dates_eval.reshape((eval_size, 1)), columns=['DAY'])
             df_eval = pd.concat([X_df_eval, y_df_eval, dates_eval], axis=1)
-            print(df_train.head())
             return AmeriFLUXLinearDataset(df_train), AmeriFLUXLinearDataset(df_eval)
         else:
             return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
@@ -265,56 +286,3 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
         _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
         return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
-    
-
-def prepare_timeseries_data(site : Site, input_columns : list[str], sequence_length : int, eval_years : int = 2) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
-    if sequence_length < 1:
-        raise ValueError(f"Error: The sequence length cannot be less than 1 ({sequence_length})")
-    df = get_data(site)
-
-    # reduce the columns to our desired set
-    target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
-
-    df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format='%Y%m%d%H%M')
-    if input_columns is not None:
-        df = df[['DATETIME', *input_columns, 'USTAR', target_col]]
-    df["NEE"] = df[target_col]
-    df = df.drop(columns=[target_col])
-
-    X_dataset = []
-    y_dataset = []
-    years_idx = []
-    print("Building dataset")
-    # TODO: is there a way to hack the rolling window to quicky generate the sequence data we need?
-    #print(pd.DataFrame(df.rolling(window=sequence_length)))
-    # This doesn't work
-    #print(pd.DataFrame(df.rolling(window=sequence_length)).apply(lambda r: r.dropna(ignore_index=True), axis=1))
-    # perhaps iterate over columns and generate the sequences for each column and ~~combine~~
-    t = tqdm.tqdm(total = len(df)-sequence_length)
-    for i in range(len(df)-sequence_length):
-        t.update(1)
-        # if there are any gaps or bad readings, skip this iteration
-        if df.iloc[i:i+sequence_length].isna().values.any() or \
-            (df['USTAR'] <= 0.2).iloc[i:i+sequence_length].any():
-            continue
-        df_seq = df.iloc[i:i+sequence_length].drop(columns=[ 'USTAR'])
-        year = df_seq['DATETIME'].dt.year.iloc[-1]
-        df_seq = df_seq.drop(columns=['DATETIME'])
-
-        X_seq = df_seq.drop(columns=["NEE"]).to_numpy(dtype=np.float32)
-        #print(X_seq)
-        y = df_seq[["NEE"]].iloc[-1].to_numpy(dtype=np.float32)
-        X_dataset.append(X_seq)
-        y_dataset.append(y)
-        years_idx.append(year)
-    print(f"The final size of the dataset is {len(X_dataset)}")
-    years_ref = np.unique(years_idx)
-    years_eval = years_ref[-eval_years:]
-    eval_idx = bisect.bisect(years_idx, years_eval[0])
-    X_train = np.array(X_dataset[0:eval_idx])
-    y_train = np.array(y_dataset[0:eval_idx])
-    X_eval = np.array(X_dataset[eval_idx:])
-    y_eval = np.array(y_dataset[eval_idx:])
-    train_years_idx = years_idx[0:eval_idx]
-    eval_years_idx = years_idx[eval_idx:]
-    return AmeriFLUXSequenceDataset(X_train, y_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, eval_years_idx)
