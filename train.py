@@ -292,7 +292,7 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
 def plot_predictions(file : str, model, data : AmeriFLUXDataset, hyperparams : dict, device : str):
     _, test_idx = data.get_train_test_idx(0)
     # option: look at just the final ~6 months
-    #test_idx = test_idx[-len(test_idx)//2:]
+    test_idx = test_idx[-len(test_idx)//2:]
     test_subsampler = SubsetRandomSampler(test_idx)
     dates = data.get_dates(test_idx)
     if model.__class__.__name__ in ['XGBoost', 'RandomForest']:

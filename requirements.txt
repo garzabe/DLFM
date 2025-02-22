@@ -5,3 +5,4 @@ torch
 torcheval
 scikit-learn
 tqdm
+xgboost

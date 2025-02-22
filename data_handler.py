@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 from abc import ABC, abstractmethod
 import tqdm
 import bisect
+import datetime
 
 Site = Enum('Site', ['Me2', 'Me6'])
 
@@ -136,7 +137,8 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     sequence_length = kwargs.get('sequence_length', -1)
     flatten = kwargs.get('flatten', False)
     ustar = kwargs.get('ustar', 'drop') # defines the method of handling low ustar entries: current possible values are: drop, na
-
+    season = kwargs.get('season', None) # summer, winter
+    
     # if we want time series data, then jump to the time series data preparator instead
     #if time_series:
     #    return prepare_timeseries_data(site_name, input_columns, sequence_length)
@@ -232,11 +234,23 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         # This doesn't work
         #print(pd.DataFrame(df.rolling(window=sequence_length)).apply(lambda r: r.dropna(ignore_index=True), axis=1))
         # perhaps iterate over columns and generate the sequences for each column and ~~combine~~
+        def in_season(d : datetime.datetime, s : str):
+            if s is None:
+                return True
+            if s == 'winter':
+                return d - datetime.datetime(d.year if d.month==12 else d.year-1, 12, 21) <= datetime.timedelta(days=90)
+            if s == 'summer':
+                return d - datetime.datetime(d.year, 12, 21) <= datetime.timedelta(days=90)
+            else:
+                return False
         t = tqdm.tqdm(total = len(_df)-sequence_length)
         for i in range(len(_df)-sequence_length):
             t.update(1)
             # if there are any gaps, skip this iteration
             if _df['DAY'].iloc[i] + pd.Timedelta(sequence_length, 'day') != _df['DAY'].iloc[i+sequence_length]:
+                continue
+            # if the datapoint is not in the desired season, skip
+            if not in_season(_df['DAY'].iloc[-1], season):
                 continue
             df_seq = _df.iloc[i:i+sequence_length]
             year = df_seq['DAY'].dt.year.iloc[-1]
@@ -282,6 +296,14 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
             return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
 
     else:
+        if season is not None:
+            solstice_mo = 6 if season=='winter' else 12 if season == 'summer' else None
+            _df['PREV_SOLSTICE'] = pd.to_datetime(_df['DAY'].apply(lambda dt: f"{dt.year:04}{solstice_mo:02}21"))
+            # e.g. day is 1-12-2020 and summer solstice is 6-21-2020, then solstice diff is negative
+            # day is 1-21-2020 and winter solstice is 12-21-2020, solstice diff is negative but <90 days (mod 365 days)
+            solstice_diff = (_df['DAY'] - _df['PREV_SOLSTICE']).apply(lambda td: td.days) % 365
+            _df = _df[solstice_diff < 90].drop(columns=['PREV_SOLSTICE'])
+
         eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
         _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
         _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
