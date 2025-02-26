@@ -57,18 +57,29 @@ def search_longest_sequence(input_columns, ustar=None):
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
-def best_vanilla_network_search(site, input_columns, stat_interval=None):
+def best_vanilla_network_search(site, input_columns, sequence_length=None, flatten=False):
     # To define a model architecture with a single hidden layer, you must add a comma after the layer dimension in the tuple
     # or Python will simplify it to an int
-    train_test_eval(DynamicANN,
-                    layer_dims=[(1, ), (4, ), (8, ), (10, ), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
-                    num_folds=7,
-                    epochs=[100,200,300],
-                    site=site,
-                    input_columns=input_columns,
-                    lr=[1e-3, 1e-2],
-                    batch_size=[32,64],
-                    stat_interval=stat_interval)
+    if not flatten:
+        train_test_eval(DynamicANN,
+                        layer_dims=[(1, ), (4, ), (8, ), (10, ), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
+                        num_folds=7,
+                        epochs=[100,200,300],
+                        site=site,
+                        input_columns=input_columns,
+                        lr=[1e-3, 1e-2],
+                        batch_size=[32,64],
+                        stat_interval=sequence_length)
+    else:
+        train_test_eval(DynamicANN,
+                        layer_dims=[(1, ), (4, ), (8, ), (10, ), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
+                        num_folds=7,
+                        epochs=[100,200,300],
+                        site=site,
+                        input_columns=input_columns,
+                        lr=[1e-3, 1e-2],
+                        batch_size=[32,64],
+                        sequence_length=sequence_length, time_series=True, flatten=True)
     
 def best_rnn_search(site, input_columns, model_class = LSTM, sequence_length = None):
     train_test_eval(model_class,
