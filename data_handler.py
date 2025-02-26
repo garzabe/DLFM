@@ -209,7 +209,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     df_X_y = df_avg[min_count_filter.all(axis=1)]
     # remove any NEE values with ustar below threshold
     if ustar=='na':
-        df_X_y[df_X_y['USTAR'] <= 0.2]['NEE'] = np.NaN
+        df_X_y.loc[df_X_y['USTAR'] <= 0.2, 'NEE'] = np.NaN
     #print(df_X_y.head())
     #df_X_y = df_X_y.drop(columns=['DAY'])
     if len(df_X_y) == 0:
@@ -253,6 +253,9 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
             if not in_season(_df['DAY'].iloc[-1], season):
                 continue
             df_seq = _df.iloc[i:i+sequence_length]
+            # if the final day NEE is NaN, skip this iteration
+            if pd.isna(df_seq['NEE']).iloc[-1]:
+                continue
             year = df_seq['DAY'].dt.year.iloc[-1]
             date = df_seq['DAY'].iloc[-1]
             df_seq = df_seq.drop(columns=['DAY'])
@@ -268,8 +271,20 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         if len(X_dataset) == 0:
             return None, None
         years_ref = np.unique(years_idx)
-        years_eval = years_ref[-eval_years:]
-        eval_idx = bisect.bisect(years_idx, years_eval[0])
+        print(f"There are {len(years_ref)} unique years in the dataset")
+        if len(years_ref) <= eval_years:
+            print(f"There are not enough unique years in the dataset to have {eval_years} evaluation years")
+            if len(years_ref)==1:
+                print("There is only one year in the dataset. Reverting to a 80-20 train-eval split. WARNING: This model will probably not be good")
+                eval_idx = (len(years_idx)*8)//10
+            else:
+                print(f"Overriding to split the dataset into 1 training year and {len(years_ref)-1} eval years")
+                eval_years = len(years_ref)-1
+        if len(years_ref)>1:
+            years_eval = years_ref[-eval_years:]
+            final_training_year = years_ref[-eval_years-1]
+            print(f"Using {years_eval} as the evaluation years")
+            eval_idx = bisect.bisect(years_idx, final_training_year)
         X_train = np.array(X_dataset[0:eval_idx])
         y_train = np.array(y_dataset[0:eval_idx])
         dates_train = np.array(dates[0:eval_idx])
@@ -278,6 +293,10 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         dates_eval = np.array(dates[eval_idx:])
         train_years_idx = years_idx[0:eval_idx]
         eval_years_idx = years_idx[eval_idx:]
+        print(f"The training set has {len(X_train)} rows and the evaluation set has {len(X_eval)} rows")
+        if len(X_eval) <= 1:
+            print("The evaluation set does not have enough data to compute an R-squared metric")
+            return None, None
         if flatten:
             train_size = len(X_train)
             eval_size = len(X_eval)

@@ -228,10 +228,9 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
             train_data, _ = prepare_data(site, **data_candidate, **kwargs)
         else:
             train_data, _ = prepare_data(site, **data_candidate, **kwargs)
-        if train_data == None or len(train_data) == 0 or train_data.get_num_years() <= 1:
+        if train_data == None or len(train_data) == 0: # or train_data.get_num_years() <= 1:
             print("Training set does not have enough data. Skipping this candidate...")
             continue
-        print(time_series)
         num_features = len(input_columns)*(3 if not time_series and 'stat_interval' in data_candidate.keys() and data_candidate['stat_interval'] is not None else 1)
         for candidate in candidates:
             candidate_suffix = ''
@@ -260,8 +259,6 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
         return None, {'r2': -np.inf}, None
     best['r2'] = max_r2
 
-    if skip_eval:
-        return None, best | data_best, history
     # 3. Train with final hparam selections
     print("Training the best performing model on the entire training set")
     if time_series:
@@ -283,6 +280,8 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
                 train(train_loader, model, loss_fn, optimizer, device)
 
 
+    if skip_eval:
+        return model, best | data_best, history
     # visualize the training performance of the final model across time
     dt = datetime.datetime.now()
     plot_predictions(f'images/trainplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', model, train_data, best, device)
@@ -409,6 +408,7 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     site = kwargs.get('site', Site.Me2)
     input_columns=kwargs.get('input_columns', [])
     time_series = kwargs.get('time_series', False)
+    skip_eval = kwargs.get('skip_eval', False)
     model_name = model_class.__name__
     sklearn_model = model_name in ['XGBoost', 'RandomForest']
 
@@ -438,6 +438,9 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         device = ("cuda" if torch.cuda.is_available() else "cpu")
         r2metric = R2Score(device=device)
         r2eval =  eval(eval_loader, final_model, r2metric, device)
+
+    if skip_eval:
+        return r2eval
 
     dt = datetime.datetime.now()
     # plot evaluation performance
