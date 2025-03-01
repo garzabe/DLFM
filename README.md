@@ -12,6 +12,20 @@ sequence_length_search with the "default" input columns and ustar=None(drop) fou
 with all hours of data included (no daylight filtering) and ustar='na', the longest sequence length is 236
 
 
+|     | ANN | Random Forest | XGBoost | RNN | LSTM | xLSTM |
+| --- | --- | ------------- | ------- | --- | ---- | ----- |
+| daytime | --- | ------------- | ------- | --- | ---- | ----- |
+| nighttime | --- | ------------- | ------- | --- | ---- | ----- |
+| all time | --- | ------------- | ------- | --- | ---- | ----- |
+| 7 day sequence (& flattened) | --- | ------------- | ------- | --- | ---- | ----- |
+| 14 day sequence (& flattened) | --- | ------------- | ------- | --- | ---- | ----- |
+| 31 day sequence (& flattened) | --- | ------------- | ------- | --- | ---- | ----- |
+| 90 day sequence (& flattened) | --- | ------------- | ------- | --- | ---- | ----- |
+| seasonal | --- | ------------- | ------- | --- | ---- | ----- |
+| dropout | --- | ------------- | ------- | --- | ---- | ----- |
+
+
+
 Hyperparameter options to train on:
 - flattened time series data (for not RNN, LSTM, xLSTM)
 - stat interval data (for not RNN, LSTM, xLSTM)
