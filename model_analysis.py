@@ -135,38 +135,36 @@ def main():
         'WS',
         'TA_1_1_2'
     ]
-
-    input_columns = get_site_vars(Site.Me2)
-    # these columns are high in NA values and make it hard to find a feature set to train on
-    # 
-    bad_columns =  ['TIMESTAMP_END', 'G_1_1_1', 'G_6_1_1', 'G_7_1_1', 'G_8_1_1', 'ALB'] +['RECO_PI_F', 'WS_MAX', 'TA_2_2_1', 'TA_2_2_2', 'RH_2_2_1', 'PPFD_IN_2_2_1', 'SW_IN_2_2_1', 'SW_OUT_2_2_1', 'LW_IN_2_2_1', 'LW_OUT_2_2_1', 'NETRAD_2_2_1', 'PA_2_2_1']
-    for bad_col in bad_columns:
-        input_columns.remove(bad_col)
-    #feature_pruning(DynamicANN, site, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6), input_columns=input_columns)
-    #train_test_eval(DynamicANN, site=site, input_columns=me2_input_column_set, num_folds=7, epochs=100, batch_size=64, lr=1e-2, layer_dims=(6,6))
-
-    #search_longest_sequence(me2_input_column_set, ustar='na')
+    ### Testing scripts - these usually evoke any bugs present in the project
     #test_sklearn()
-    #train_test_eval(DynamicANN, layer_dims=(6,4), num_folds=2, epochs=300, site=Site.Me2, input_columns=['P','PPFD_IN'], lr=0.01, batch_size=64, num_models=2)
     #test_tte()
-    #train_test_eval(XGBoost, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, lr=[0.5, 0.9, 1], n_estimators=[100, 1000, 10000], sklearn_model=True)
-    #train_test_eval(RandomForest, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, n_estimators=[10,100, 1000], sklearn_model=True)
 
+    ### Example usage for the best_***_search functions
     #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
-
     #best_rnn_search(site, me2_input_column_set, model_class=LSTM)
     #best_rnn_search(site, me2_input_column_set, model_class=RNN)
-    #train_test_eval(RNN, time_series=True, sequence_length=60, num_folds=5, epochs=300, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=1, ustar='na')
 
-    # RNN, LSTM, DynamicANN (stat interval and flatenned) with 7,14,31,90 days and 0.0, 0.01, 0.05 dropout
-    
-    for sl in [7,14,31,90,180]:
-        for d in [0.0, 0.01, 0.05]:
-            best_rnn_search(Site.Me2, me2_input_column_set, RNN, sequence_length=sl, dropout=d)
-            best_rnn_search(Site.Me2, me2_input_column_set, LSTM, sequence_length=sl, dropout=d)
-        best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=False)
-        best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=True)
-
+    ### RNN, LSTM, DynamicANN (stat interval and flatenned) with 7,14,31,90 days and 0.0, 0.01, 0.05 dropout
+    # for sl in [7,14,31,90,180]:
+    #     for d in [0.0, 0.01, 0.05]:
+    #         best_rnn_search(Site.Me2, me2_input_column_set, RNN, sequence_length=sl, dropout=d)
+    #         best_rnn_search(Site.Me2, me2_input_column_set, LSTM, sequence_length=sl, dropout=d)
+    #     best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=False)
+    #     best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=True)
+    train_test_eval(DynamicANN,
+                    num_folds=2,
+                    epochs=30,
+                    site=Site.Me2,
+                    input_columns=me2_input_column_set,
+                    layer_dims=(6,4),
+                    lr=[1e-2],
+                    batch_size=64,
+                    #sequence_length=31,
+                    #hidden_state_size=8,
+                    #num_layers=1,
+                    #dropout=0.0,
+                    #time_series=True,
+                    num_models=10)
 
 
                 

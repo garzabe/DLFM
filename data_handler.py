@@ -37,7 +37,7 @@ class AmeriFLUXDataset(Dataset, ABC):
 class AmeriFLUXLinearDataset(Dataset):
     def __init__(self, df_X_y : pd.DataFrame):
         # hold onto the original dataframe
-        self.df = df_X_y.reset_index()
+        self.df = df_X_y.reset_index(drop=True)
         self.years = self.df['DAY'].dt.year.unique()
         self.inputs : pd.DataFrame = self.df.drop(columns=['DAY', 'NEE'])
         self.labels : pd.Series = self.df['NEE']
@@ -62,7 +62,7 @@ class AmeriFLUXLinearDataset(Dataset):
         return len(self.years)
 
     def __getitem__(self, idx):
-        input : np.ndarray = self.inputs.iloc[idx].drop("index").to_numpy(dtype=np.float32)
+        input : np.ndarray = self.inputs.iloc[idx].to_numpy(dtype=np.float32)
         label : np.ndarray = np.array([self.labels.iloc[idx]], dtype=np.float32)
         return input, label
     
@@ -261,11 +261,11 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
             y_dataset.append(y)
             years_idx.append(year)
             dates.append(date)
+        t.close()
         # sequence too long, empty dataset
         if len(X_dataset) == 0:
             return None, None
         years_ref = np.unique(years_idx)
-        print(f"There are {len(years_ref)} unique years in the dataset")
         if len(years_ref) <= eval_years:
             print(f"There are not enough unique years in the dataset to have {eval_years} evaluation years")
             if len(years_ref)==1:
@@ -277,7 +277,6 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         if len(years_ref)>1:
             years_eval = years_ref[-eval_years:]
             final_training_year = years_ref[-eval_years-1]
-            print(f"Using {years_eval} as the evaluation years")
             eval_idx = bisect.bisect(years_idx, final_training_year)
         X_train = np.array(X_dataset[0:eval_idx])
         y_train = np.array(y_dataset[0:eval_idx])

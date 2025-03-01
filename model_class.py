@@ -63,7 +63,7 @@ class DynamicANN(NEPModel):
         sequential_layers.append(nn.Linear(in_features=layer_dims[-1], out_features=1))
         self.stack  = nn.Sequential(*sequential_layers)
 
-    def forward(self, x):
+    def forward(self, x : torch.Tensor):
         return self.stack(x)
 
 class RNN(NEPModel):

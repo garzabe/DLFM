@@ -301,20 +301,16 @@ def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset,
     x = [d.date() for d in dates]
     y_predictions = []
     y = [data.get_y()[idx] for idx in test_idx]
+    X = np.array([data.get_X()[idx] for idx in test_idx])
+    X_tensor = torch.tensor(X, device=device, dtype=torch.float32)
     for model in models:
         if model.__class__.__name__ in ['XGBoost', 'RandomForest']:
-            X = [data.get_X()[idx] for idx in test_idx]
             y_pred = model(X)
             y_predictions.append(y_pred)
         else:
-            test_loader = DataLoader(data, batch_size=len(dates), shuffle=False)#, sampler=test_subsampler)
-            X, _y = next(iter(test_loader))
-            X = X.to(device)
-            _y = _y.to(device)
-            _y_pred : torch.Tensor = model(X)
+            _y_pred : torch.Tensor = model(X_tensor)
             y_pred = [a[0] for a in _y_pred.detach().cpu().numpy()]
             y_predictions.append(y_pred)
-            #y = [a[0] for a in _y.detach().cpu().numpy()]
     y_predictions = np.array(y_predictions)
     y_pred_avg = y_predictions.transpose().mean(axis=1)
     y_pred_var = y_predictions.transpose().var(axis=1)
