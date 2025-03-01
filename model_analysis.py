@@ -55,6 +55,10 @@ def search_longest_sequence(input_columns, ustar=None):
     print(f"The longest sequence found was {longest_sequence_low}")
     return longest_sequence_low
 
+# TODO: count how many 1-day gaps there are
+
+# TODO: do best_rnn_search, iterating on sequence length to observe the change in performance with lost days
+
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
 def best_vanilla_network_search(site, input_columns, sequence_length=None, flatten=False):
@@ -81,7 +85,7 @@ def best_vanilla_network_search(site, input_columns, sequence_length=None, flatt
                         batch_size=[32,64],
                         sequence_length=sequence_length, time_series=True, flatten=True)
     
-def best_rnn_search(site, input_columns, model_class = LSTM, sequence_length = None):
+def best_rnn_search(site, input_columns, model_class = LSTM, sequence_length = None, dropout=0.0):
     train_test_eval(model_class,
                     num_folds=7,
                     epochs=[100,200,300],
@@ -92,7 +96,7 @@ def best_rnn_search(site, input_columns, model_class = LSTM, sequence_length = N
                     sequence_length=[7,14,31,62,124] if sequence_length is None else sequence_length, # 1 year is too long...
                     hidden_state_size=[4,8,15],
                     num_layers=[1,2,3],
-                    dropout=[0.0, 0.01, 0.1],
+                    dropout=dropout,
                     time_series=True)
 
 
@@ -143,7 +147,8 @@ def main():
 
     #search_longest_sequence(me2_input_column_set, ustar='na')
     #test_sklearn()
-    test_tte()
+    #train_test_eval(DynamicANN, layer_dims=(6,4), num_folds=2, epochs=300, site=Site.Me2, input_columns=['P','PPFD_IN'], lr=0.01, batch_size=64, num_models=2)
+    #test_tte()
     #train_test_eval(XGBoost, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, lr=[0.5, 0.9, 1], n_estimators=[100, 1000, 10000], sklearn_model=True)
     #train_test_eval(RandomForest, num_folds=7, site=Site.Me2, input_columns=me2_input_column_set, n_estimators=[10,100, 1000], sklearn_model=True)
 
@@ -152,6 +157,17 @@ def main():
     #best_rnn_search(site, me2_input_column_set, model_class=LSTM)
     #best_rnn_search(site, me2_input_column_set, model_class=RNN)
     #train_test_eval(RNN, time_series=True, sequence_length=60, num_folds=5, epochs=300, site=site, input_columns=me2_input_column_set, batch_size=64, lr=1e-2, eval_years=2, num_layers=1, ustar='na')
+
+    # RNN, LSTM, DynamicANN (stat interval and flatenned) with 7,14,31,90 days and 0.0, 0.01, 0.05 dropout
+    
+    for sl in [7,14,31,90,180]:
+        for d in [0.0, 0.01, 0.05]:
+            best_rnn_search(Site.Me2, me2_input_column_set, RNN, sequence_length=sl, dropout=d)
+            best_rnn_search(Site.Me2, me2_input_column_set, LSTM, sequence_length=sl, dropout=d)
+        best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=False)
+        best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=True)
+
+
 
                 
 if __name__=="__main__":

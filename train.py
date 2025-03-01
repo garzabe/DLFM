@@ -156,13 +156,14 @@ def train_kfold(num_folds : int,
 
 
 
-def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
+def train_hparam(model_class : Type[nn.Module], **kwargs) -> tuple[list[nn.Module], dict[str, None], list[dict[str, None]]]:
     model_name = model_class.__name__
 
     # Accepted kwargs
     num_folds = kwargs.get('num_folds', 5)
     input_columns = kwargs.get('input_columns', [])
     site = kwargs.get('site', Site.Me2)
+    num_models = kwargs.get('num_models', 1)
     
     sklearn_model = model_name=='XGBoost' or model_name=='RandomForest'
 
@@ -249,75 +250,93 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> nn.Module:
                             **candidate_subset)
             history.append(candidate | data_candidate | {'train_size' : len(train_data)})
             history[-1]['r2'] = r2
-            history[-1]['ci_low'] = ci_low
+            #history[-1]['ci_low'] = ci_low
             if ci_low > max_r2: # to account for folds with different # of years, we use confidence intervals
                 best = candidate
                 data_best = data_candidate
                 max_r2 = ci_low
     if max_r2 == -np.inf:
         print("No candidates succeeded (likely all datasets were empty)")
-        return None, {'r2': -np.inf}, None
+        return [], {'r2': -np.inf}, None
     best['r2'] = max_r2
 
     # 3. Train with final hparam selections
-    print("Training the best performing model on the entire training set")
-    if time_series:
-        train_data, _ = prepare_data(site, **data_best, **kwargs)
-    else:
-        train_data, _ = prepare_data(site, **data_best, **kwargs)
+    models = []
+    print(f"Training the best performing model on the entire training set {num_models} times")
     num_features = len(input_columns)*(3 if not time_series and 'stat_interval' in data_best.keys() and data_best['stat_interval'] is not None else 1)
-    if sklearn_model:
-        model = model_class(**best)
-        X = train_data.get_X()
-        y = train_data.get_y()
-        model.fit(X, y)
-    else:
-        model : nn.Module = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, **best).to(device)
-        train_loader = DataLoader(train_data, batch_size=best['batch_size'])
-        optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
-        for t in range(best['epochs']):
-                print(f"Epoch {t+1}")
-                train(train_loader, model, loss_fn, optimizer, device)
+    for i in range(num_models):
+        if time_series:
+            train_data, _ = prepare_data(site, **data_best, **kwargs)
+        else:
+            train_data, _ = prepare_data(site, **data_best, **kwargs)
+        if sklearn_model:
+            model = model_class(**best)
+            X = train_data.get_X()
+            y = train_data.get_y()
+            model.fit(X, y)
+        else:
+            model : nn.Module = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, **best).to(device)
+            train_loader = DataLoader(train_data, batch_size=best['batch_size'])
+            optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
+            for t in range(best['epochs']):
+                    print(f"Epoch {t+1}")
+                    train(train_loader, model, loss_fn, optimizer, device)
+        models.append(model)
 
 
     if skip_eval:
-        return model, best | data_best, history
+        return models, best | data_best, history
     # visualize the training performance of the final model across time
     dt = datetime.datetime.now()
-    plot_predictions(f'images/trainplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', model, train_data, best, device)
+    plot_predictions(f'images/trainplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', models, train_data, best, device)
 
-    return model, best | data_best, history
+    return models, best | data_best, history
 
-def plot_predictions(file : str, model, data : AmeriFLUXDataset, hyperparams : dict, device : str):
+def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset, hyperparams : dict, device : str, train=True):
     _, test_idx = data.get_train_test_idx(0)
     # option: look at just the final ~6 months
     test_idx = test_idx[-len(test_idx)//2:]
     test_subsampler = SubsetRandomSampler(test_idx)
     dates = data.get_dates(test_idx)
-    if model.__class__.__name__ in ['XGBoost', 'RandomForest']:
-        X = [data.get_X()[idx] for idx in test_idx]
-        y = [data.get_y()[idx] for idx in test_idx]
-        y_pred = model(X)
-    else:
-        test_loader = DataLoader(data, batch_size=len(dates), shuffle=False)#, sampler=test_subsampler)
-        X, _y = next(iter(test_loader))
-        X = X.to(device)
-        _y = _y.to(device)
-        _y_pred : torch.Tensor = model(X)
-        y_pred = [a[0] for a in _y_pred.detach().cpu().numpy()]
-        y = [a[0] for a in _y.detach().cpu().numpy()]
     x = [d.date() for d in dates]
+    y_predictions = []
+    y = [data.get_y()[idx] for idx in test_idx]
+    for model in models:
+        if model.__class__.__name__ in ['XGBoost', 'RandomForest']:
+            X = [data.get_X()[idx] for idx in test_idx]
+            y_pred = model(X)
+            y_predictions.append(y_pred)
+        else:
+            test_loader = DataLoader(data, batch_size=len(dates), shuffle=False)#, sampler=test_subsampler)
+            X, _y = next(iter(test_loader))
+            X = X.to(device)
+            _y = _y.to(device)
+            _y_pred : torch.Tensor = model(X)
+            y_pred = [a[0] for a in _y_pred.detach().cpu().numpy()]
+            y_predictions.append(y_pred)
+            #y = [a[0] for a in _y.detach().cpu().numpy()]
+    y_predictions = np.array(y_predictions)
+    y_pred_avg = y_predictions.transpose().mean(axis=1)
+    y_pred_var = y_predictions.transpose().var(axis=1)
 
     plt.clf()
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%m/%d/%Y"))
     plt.gca().xaxis.set_major_locator(mdates.DayLocator())
     plt.plot(x, y, label='Actual NEE')
-    plt.plot(x, y_pred, label='Predicted NEE')
+
+    if len(models) > 1:
+        plt.plot(x, y_pred_avg, label='Average predicted NEE')
+        for y_prediction in y_predictions:
+            plt.scatter(x, y_prediction, c='b', s=3.0, alpha=0.5)
+        plt.fill_between(x, y_pred_avg - y_pred_var, y_pred_avg + y_pred_var, alpha=0.2)
+    else:
+        plt.plot(x, y_predictions.flatten(), label='Predicted NEE')
+
     plt.xticks([x[i] for i in range(0, len(x), len(x)//12)])
     plt.gcf().autofmt_xdate()
     plt.ylabel("NEE")
     plt.legend()
-    plt.title('NEE Model Predictions on final year of train data')
+    plt.title(f"NEE Model Predictions on final year of {'training' if train else 'evaluation'} data")
     subtitle = f"{type(model).__name__}"
     for hparam, value in hyperparams.items():
         if hparam=='r2':
@@ -413,12 +432,12 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     sklearn_model = model_name in ['XGBoost', 'RandomForest']
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
-    final_model, hparams, history = train_hparam(model_class, **kwargs)
-    if final_model == None:
+    final_models, hparams, history = train_hparam(model_class, **kwargs)
+    if len(final_models) == 0:
         print("train_hparam failed to train any models")
         return -np.inf
 
-    # Evaluate the final model on the evaluation set
+    # Evaluate the final models on the evaluation set
     data_kwargs = kwargs.copy()
     data_kwargs.update(hparams)
     if time_series:
@@ -428,23 +447,25 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         kwargs.pop('stat_interval', None)
         _, eval_data = prepare_data(site, **data_kwargs)
 
-    if sklearn_model:
-        y = eval_data.get_y()
-        y_pred = final_model(eval_data.get_X())
-        r2eval = r2_score(y, y_pred)
-        device = None
-    else:
-        eval_loader = DataLoader(eval_data, batch_size=64)
-        device = ("cuda" if torch.cuda.is_available() else "cpu")
-        r2metric = R2Score(device=device)
-        r2eval =  eval(eval_loader, final_model, r2metric, device)
+    r2evals = []
+    y = eval_data.get_y()
+    for model in final_models:
+        if sklearn_model:
+            y_pred = model(eval_data.get_X())
+            r2evals.append(r2_score(y, y_pred))
+            device = None
+        else:
+            eval_loader = DataLoader(eval_data, batch_size=64)
+            device = ("cuda" if torch.cuda.is_available() else "cpu")
+            r2metric = R2Score(device=device)
+            r2evals.append(eval(eval_loader, model, r2metric, device))
 
     if skip_eval:
-        return r2eval
+        return np.mean(r2evals)
 
     dt = datetime.datetime.now()
     # plot evaluation performance
-    plot_predictions(f'images/evalplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', final_model, eval_data, hparams, device)
+    plot_predictions(f'images/evalplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', final_models, eval_data, hparams, device, train=False)
 
     # write the results to an output file
     with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.md", 'w') as f:
@@ -463,22 +484,26 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         #table_head += ' Average R-Squared |'
         #head_border += ' --- |'
 
-        f.write(f'{table_head} Average R-Squared |\n')
-        f.write(f'{head_border} --- |\n')
+        f.write(f'{table_head} Training Set Size | Average R-Squared |\n')
+        f.write(f'{head_border} --- | --- |\n')
         for candidate in history:
             row = '|'
-            for value in candidate.values():
+            for hparam in hparams.keys():
+                if hparam=='r2':
+                    continue
+                value = candidate[hparam]
                 if isinstance(value, float):
                     row += f' {value:.2f} |'
                 elif isinstance(value, Callable):
                     row += f' {value.__name__} |'
                 else:
                     row += f' {value} |'
+            row += f' {candidate["train_size"]} | {candidate["r2"]:.3f} |'
             f.write(f"{row}\n")
             
         f.write('\n')
         f.write("### Best Model Evaluation\n\n")
-        model_str_lines = str(final_model).splitlines()
+        model_str_lines = str(final_models[0]).splitlines()
         f.write('~~~\n')
         for line in model_str_lines[:-1]:
             f.write(f'{line}\n\n')
@@ -489,13 +514,16 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
         f.write(f'{head_border} --- |\n')
 
         row = '|'
-        for value in hparams.values():
+        for hparam in hparams.keys():
+            if hparam=='r2':
+                continue
+            value = hparams[hparam]
             if isinstance(value, float):
                 row += f' {value:.2f} |'
             elif isinstance(value, Callable):
-                row += f' {value.__name__}'
+                row += f' {value.__name__} |'
             else:
                 row += f' {value} |'
-        f.write(f"{row} {r2eval:.3f} |\n")
+        f.write(f"{row} {np.mean(r2evals):.3f} |\n")
     
-    return r2eval
+    return np.mean(r2evals)

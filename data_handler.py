@@ -158,8 +158,7 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
 
 
     # drop all rows where ustar is not sufficient
-    # TODO: does USTAR apply to just NEE or all input variables @Loren
-    if ustar == 'drop':
+    if ustar == 'drop'or not time_series:
         df = df[df['USTAR'] > 0.2]
     #print(f"Dropped {_nrows - len(df)}  rows with USTAR threshold ({len(df)})")
     
@@ -229,11 +228,6 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
         y_dataset = []
         years_idx = []
         dates = []
-        # TODO: is there a way to hack the rolling window to quicky generate the sequence data we need?
-        #print(pd.DataFrame(df.rolling(window=sequence_length)))
-        # This doesn't work
-        #print(pd.DataFrame(df.rolling(window=sequence_length)).apply(lambda r: r.dropna(ignore_index=True), axis=1))
-        # perhaps iterate over columns and generate the sequences for each column and ~~combine~~
         def in_season(d : datetime.datetime, s : str):
             if s is None:
                 return True
