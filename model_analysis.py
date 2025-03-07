@@ -7,7 +7,11 @@ from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest
 
 import matplotlib.pyplot as plt
 
-
+default_hparams = {DynamicANN: {'layer_dims': (6,6), 'epochs': 300, 'batch_size': 64, 'lr': [0.01, 0.001]},
+                   RNN: {'hidden_state_size': [8, 15], 'num_layers': [1,2], 'epochs': 200, 'batch_size': 64, 'lr': 0.01},
+                   LSTM: {'hidden_state_size': [8, 15], 'num_layers': 1, 'epochs': 200, 'batch_size': 32, 'lr': 0.01},
+                   XGBoost: {'lr': 0.5, 'n_estimators': 1000},
+                   RandomForest: {'n_estimators': 1000}}
 
 def test_tte():
     simple_cols = ['P', 'PPFD_IN', 'D_SNOW']
@@ -66,7 +70,7 @@ def search_longest_sequence(input_columns, ustar=None):
 
 def plot_sequence_importance(site, input_columns, model_class, max_sequence_length=90, **kwargs):
     r2 = []
-    sequence_args = {}
+    sequence_args = default_hparams[model_class]
     sequence_args['time_series'] = True
     if model_class==DynamicANN:
         # TODO: or allow stat interval instead of flattened TS data
@@ -74,7 +78,7 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
     
     sequence_lengths = list(range(1, max_sequence_length))
     for sl in range(1, max_sequence_length+1):
-        r2.append(train_test_eval(model_class, site=site, input_columns=input_columns, num_folds=2, sequence_length=sl, **sequence_args))
+        r2.append(train_test_eval(model_class, site, input_columns, num_folds=2, sequence_length=sl, **sequence_args))
 
     plt.clf()
     plt.plot(sequence_lengths, r2)
