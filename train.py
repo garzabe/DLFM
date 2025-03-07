@@ -156,13 +156,11 @@ def train_kfold(num_folds : int,
 
 
 
-def train_hparam(model_class : Type[nn.Module], **kwargs) -> tuple[list[nn.Module], dict[str, None], list[dict[str, None]]]:
+def train_hparam(model_class : Type[nn.Module], site, input_columns, **kwargs) -> tuple[list[nn.Module], dict[str, None], list[dict[str, None]]]:
     model_name = model_class.__name__
 
     # Accepted kwargs
     num_folds = kwargs.get('num_folds', 5)
-    input_columns = kwargs.get('input_columns', [])
-    site = kwargs.get('site', Site.Me2)
     num_models = kwargs.get('num_models', 1)
     
     sklearn_model = model_name=='XGBoost' or model_name=='RandomForest'
@@ -226,9 +224,9 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> tuple[list[nn.Modul
             hparam_print += f"{HYPERPARAMETER_NAMES[key]['title']}: {val}\n"
         
         if time_series:
-            train_data, _ = prepare_data(site, **data_candidate, **kwargs)
+            train_data, _ = prepare_data(site, input_columns, **data_candidate, **kwargs)
         else:
-            train_data, _ = prepare_data(site, **data_candidate, **kwargs)
+            train_data, _ = prepare_data(site, input_columns, **data_candidate, **kwargs)
         if train_data == None or len(train_data) == 0: # or train_data.get_num_years() <= 1:
             print("Training set does not have enough data. Skipping this candidate...")
             continue
@@ -266,9 +264,9 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> tuple[list[nn.Modul
     num_features = len(input_columns)*(3 if not time_series and 'stat_interval' in data_best.keys() and data_best['stat_interval'] is not None else 1)
     for i in range(num_models):
         if time_series:
-            train_data, _ = prepare_data(site, **data_best, **kwargs)
+            train_data, _ = prepare_data(site, input_columns, **data_best, **kwargs)
         else:
-            train_data, _ = prepare_data(site, **data_best, **kwargs)
+            train_data, _ = prepare_data(site, input_columns, **data_best, **kwargs)
         if sklearn_model:
             model = model_class(**best)
             X = train_data.get_X()
@@ -288,67 +286,103 @@ def train_hparam(model_class : Type[nn.Module], **kwargs) -> tuple[list[nn.Modul
         return models, best | data_best, history
     # visualize the training performance of the final model across time
     dt = datetime.datetime.now()
-    plot_predictions(f'images/trainplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', models, train_data, best, device)
+    plot_predictions(f'images/trainplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold', models, train_data, best, device)
 
     return models, best | data_best, history
 
-def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset, hyperparams : dict, device : str, train=True):
+def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset, hyperparams : dict, device : str, train=True, smooth=False, smooth_weight=0.5):
+    month_ticks = {1: [1, 14, 28],
+                   2: [11, 25],
+                   3: [11, 25],
+                   4: [8, 22],
+                   5: [6, 20],
+                   6: [10, 24],
+                   7: [8, 22],
+                   8: [5,  19],
+                   9: [2, 16, 30],
+                   10: [14, 28],
+                   11: [11, 25],
+                   12: [9, 23, 31]
+                   }
+    
+    def smooth_curve(Y : list[float], w : float) -> np.ndarray[float]:
+        last = Y[0]
+        smoothed_Y = []
+        for y in Y:
+            smoothed_y = last*w + (1-w)*y
+            smoothed_Y.append(smoothed_y)
+            last = smoothed_y
+        return np.array(smoothed_Y)
+    smooth_fn = smooth_curve if smooth else (lambda Y, w: Y)
     _, test_idx = data.get_train_test_idx(0)
     # option: look at just the final ~6 months
-    test_idx = test_idx[-len(test_idx)//2:]
+    test_idx = test_idx[-len(test_idx):]
     test_subsampler = SubsetRandomSampler(test_idx)
-    dates = data.get_dates(test_idx)
-    x = [d.date() for d in dates]
-    y_predictions = []
-    y = [data.get_y()[idx] for idx in test_idx]
-    X = np.array([data.get_X()[idx] for idx in test_idx])
-    X_tensor = torch.tensor(X, device=device, dtype=torch.float32)
-    for model in models:
-        if model.__class__.__name__ in ['XGBoost', 'RandomForest']:
-            y_pred = model(X)
-            y_predictions.append(y_pred)
+    dates = data.get_dates(idx_range=test_idx)
+    year = dates[0].year
+    month_labels =["Jan-April", "May-Aug", "Sept-Dec"]
+    month_nums = [[1,2,3,4], [5,6,7,8], [9,10,11,12]]
+    # split plots up into 3 four-month subintervals: Jan-April, May-Aug, Sept-Dec
+    x = [[d.date() for d in dates if d.month in _month_nums] for _month_nums in month_nums]
+    _y = [data.get_y()[idx] for idx in test_idx]
+    # split y (targets) on the same points as x (dates)
+    y = [_y[:len(x[0])], _y[len(x[0]):len(x[0])+len(x[1])], _y[len(x[0])+len(x[1]):]]
+    _X = np.array([data.get_X()[idx] for idx in test_idx])
+    # split X (inputs) on the same points as x (dates)
+    X = [_X[:len(x[0])], _X[len(x[0]):len(x[0])+len(x[1])], _X[len(x[0])+len(x[1]):]]
+    # Pytorch models will want a Tensor over a numpy array
+    X_tensor = [torch.tensor(_X, device=device, dtype=torch.float32) for _X in X]
+    for _month_nums, month_label, _x, _X, _X_tensor, _y in zip(month_nums, month_labels, x, X, X_tensor, y):
+        y_predictions = []
+        for model in models:
+            if model.__class__.__name__ in ['XGBoost', 'RandomForest']:
+                y_pred = model(_X)
+                y_predictions.append(y_pred)
+            else:
+                _y_pred : torch.Tensor = model(_X_tensor)
+                y_pred = [a[0] for a in _y_pred.detach().cpu().numpy()]
+                y_predictions.append(y_pred)
+        y_predictions = np.array(y_predictions)
+        y_pred_avg = y_predictions.transpose().mean(axis=1)
+        y_pred_var = y_predictions.transpose().var(axis=1)
+
+        plt.clf()
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%m/%d/%Y"))
+        plt.gca().xaxis.set_major_locator(mdates.DayLocator())
+        plt.plot(_x, smooth_fn(_y, smooth_weight), label='Actual NEE')
+
+        if len(models) > 1:
+            plt.plot(_x, smooth_fn(y_pred_avg, smooth_weight), label='Average predicted NEE')
+            for y_prediction in y_predictions:
+                plt.scatter(_x, smooth_fn(y_prediction, smooth_weight), c='b', s=3.0, alpha=0.5)
+            plt.fill_between(_x, smooth_fn(y_pred_avg, smooth_weight) - smooth_fn(y_pred_var, smooth_weight), smooth_fn(y_pred_avg, smooth_weight) + smooth_fn(y_pred_var, smooth_weight), alpha=0.2)
         else:
-            _y_pred : torch.Tensor = model(X_tensor)
-            y_pred = [a[0] for a in _y_pred.detach().cpu().numpy()]
-            y_predictions.append(y_pred)
-    y_predictions = np.array(y_predictions)
-    y_pred_avg = y_predictions.transpose().mean(axis=1)
-    y_pred_var = y_predictions.transpose().var(axis=1)
+            plt.plot(_x, smooth_fn(y_predictions.flatten(), smooth_weight), label='Predicted NEE')
 
-    plt.clf()
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%m/%d/%Y"))
-    plt.gca().xaxis.set_major_locator(mdates.DayLocator())
-    plt.plot(x, y, label='Actual NEE')
-
-    if len(models) > 1:
-        plt.plot(x, y_pred_avg, label='Average predicted NEE')
-        for y_prediction in y_predictions:
-            plt.scatter(x, y_prediction, c='b', s=3.0, alpha=0.5)
-        plt.fill_between(x, y_pred_avg - y_pred_var, y_pred_avg + y_pred_var, alpha=0.2)
-    else:
-        plt.plot(x, y_predictions.flatten(), label='Predicted NEE')
-
-    plt.xticks([x[i] for i in range(0, len(x), len(x)//12)])
-    plt.gcf().autofmt_xdate()
-    plt.ylabel("NEE")
-    plt.legend()
-    plt.title(f"NEE Model Predictions on final year of {'training' if train else 'evaluation'} data")
-    subtitle = f"{type(model).__name__}"
-    for hparam, value in hyperparams.items():
-        if hparam=='r2':
-            continue
-        abbr = HYPERPARAMETER_NAMES[hparam]['abbreviation']
-        if isinstance(value, float):
-            val_fs = f'{value:.2f}'
-        elif isinstance(value, Callable):
-            val_fs = f'{value.__name__}'
-        else:
-            val_fs = f'{value}'
-        subtitle += f' | {abbr}: {val_fs}'
-    plt.suptitle(subtitle)
-    dt = datetime.datetime.now()
-    name = model.__class__.__name__
-    plt.savefig(file)
+        # xticks should fall on first day of each week, for a total of 4 months*4 weeks= 16 weeks?
+        plt.xticks([datetime.datetime(year=year, month=m, day=d) for m in _month_nums for d in month_ticks[m]])
+        plt.yticks(list(range(-8, 2, 2)))
+        plt.ylim((-10, 2))
+        plt.gcf().autofmt_xdate()
+        plt.ylabel("NEE")
+        plt.legend()
+        plt.title(f"NEE Model Predictions on final year of {'training' if train else 'evaluation'} data {month_label}")
+        subtitle = f"{type(model).__name__}"
+        for hparam, value in hyperparams.items():
+            if hparam=='r2':
+                continue
+            abbr = HYPERPARAMETER_NAMES[hparam]['abbreviation']
+            if isinstance(value, float):
+                val_fs = f'{value:.2f}'
+            elif isinstance(value, Callable):
+                val_fs = f'{value.__name__}'
+            else:
+                val_fs = f'{value}'
+            subtitle += f' | {abbr}: {val_fs}'
+        plt.suptitle(subtitle)
+        dt = datetime.datetime.now()
+        name = model.__class__.__name__
+        plt.savefig(file.rstrip('.png') + f'-{month_label}.png')
 
 def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> list[str]:
     input_columns : list[str] = kwargs.get('input_columns', None)
@@ -371,7 +405,7 @@ def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> lis
     # get initial model performance
     history = {}
     kwargs.pop('input_columns', None)
-    _, results, _ = train_hparam(model_class, input_columns=input_columns, eval_years=1, skip_eval=True, **kwargs)
+    _, results, _ = train_hparam(model_class, site, input_columns, eval_years=1, skip_eval=True, **kwargs)
     max_r2 = results['r2']
     # history indexed by # of pruned vars
     history[0] = {'pruned_col': None, 'r2': results['r2']}
@@ -388,7 +422,7 @@ def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> lis
             print(f"Training model without {pruned_columns[pruned_idx]}")
             _candidate_columns = pruned_columns[0:pruned_idx] + pruned_columns[pruned_idx+1:]# if stat interval is included then 
 
-            _, results, _ = train_hparam(model_class, input_columns=_candidate_columns, skip_eval=True, **kwargs)
+            _, results, _ = train_hparam(model_class, site, _candidate_columns, skip_eval=True, **kwargs)
             _r2 = results['r2']
             if _r2 > max_r2:
                 new_columns = _candidate_columns
@@ -418,17 +452,15 @@ def feature_pruning(model_class : Type[nn.Module], site : Site, **kwargs) -> lis
     return pruned_columns
     
 
-def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
+def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs) -> float:
     num_folds = kwargs.get('num_folds', 5)
-    site = kwargs.get('site', Site.Me2)
-    input_columns=kwargs.get('input_columns', [])
     time_series = kwargs.get('time_series', False)
     skip_eval = kwargs.get('skip_eval', False)
     model_name = model_class.__name__
     sklearn_model = model_name in ['XGBoost', 'RandomForest']
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
-    final_models, hparams, history = train_hparam(model_class, **kwargs)
+    final_models, hparams, history = train_hparam(model_class, site, input_columns, **kwargs)
     if len(final_models) == 0:
         print("train_hparam failed to train any models")
         return -np.inf
@@ -438,10 +470,10 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
     data_kwargs.update(hparams)
     if time_series:
         kwargs.pop('sequence_length', None)
-        _, eval_data = prepare_data(site, **data_kwargs)
+        _, eval_data = prepare_data(site, input_columns, **data_kwargs)
     else:
         kwargs.pop('stat_interval', None)
-        _, eval_data = prepare_data(site, **data_kwargs)
+        _, eval_data = prepare_data(site, input_columns, **data_kwargs)
 
     r2evals = []
     y = eval_data.get_y()
@@ -461,7 +493,7 @@ def train_test_eval(model_class : Type[nn.Module], **kwargs) -> float:
 
     dt = datetime.datetime.now()
     # plot evaluation performance
-    plot_predictions(f'images/evalplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.png', final_models, eval_data, hparams, device, train=False)
+    plot_predictions(f'images/evalplot-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold', final_models, eval_data, hparams, device, train=False)
 
     # write the results to an output file
     with open(f"results/training_results-{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}::{model_name}-{num_folds}fold.md", 'w') as f:

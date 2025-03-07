@@ -19,7 +19,7 @@ class AmeriFLUXDataset(Dataset, ABC):
         pass
 
     @abstractmethod
-    def get_dates(self, idx_range : list[int]) -> list:
+    def get_dates(self, idx_range : list[int]) -> list[datetime.datetime]:
         pass
 
     @abstractmethod
@@ -55,8 +55,11 @@ class AmeriFLUXLinearDataset(Dataset):
         test_year_match = self.df['DAY'].dt.year == year
         return self.df[~test_year_match].index.to_list(), self.df[test_year_match].index.to_list()
     
-    def get_dates(self, idx_range : list[int]):
-        return self.df['DAY'].iloc[idx_range].to_list()
+    def get_dates(self, idx_range : list[int]=None):
+        if idx_range is not None:
+            return self.df['DAY'].iloc[idx_range].to_list()
+        else:
+            return self.df['DAY'].to_list()        
 
     def get_num_years(self):
         return len(self.years)
@@ -101,8 +104,11 @@ class AmeriFLUXSequenceDataset(Dataset):
         year_hi = bisect.bisect(self.years_idx, year)
         return list(range(0, year_lo)) + list(range(year_hi, len(self.years_idx))), list(range(year_lo, year_hi))
     
-    def get_dates(self, idx_range : list[int]):
-        return [self.dates[i] for i in idx_range]
+    def get_dates(self, idx_range : list[int] = None):
+        if idx_range is not None:
+            return [self.dates[i] for i in idx_range]
+        else:
+            return self.dates
     
     def get_X(self):
         return self.inputs
@@ -129,38 +135,43 @@ def get_site_vars(site : Site):
     data = get_data(site)
     return data.columns.to_list()
 
-def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
-    df = get_data(site_name)
+def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+    print(kwargs)
     stat_interval = kwargs.get('stat_interval', None)
-    input_columns = kwargs.get('input_columns', df.columns)
     time_series = kwargs.get('time_series', False)
     sequence_length = kwargs.get('sequence_length', -1)
+    match_sequence_length = kwargs.get('match_sequence_length', None)
     flatten = kwargs.get('flatten', False)
     ustar = kwargs.get('ustar', 'drop') # defines the method of handling low ustar entries: current possible values are: drop, na
     season = kwargs.get('season', None) # summer, winter
-    
-    # if we want time series data, then jump to the time series data preparator instead
-    #if time_series:
-    #    return prepare_timeseries_data(site_name, input_columns, sequence_length)
 
+    # in the case we are using match_sequence_length, first get the set of prediction dates for the target dataset
+    match_dates_train = None
+    match_dates_eval = None
+    if match_sequence_length is not None:
+        print("Generating the reference dataset for our actual dataset to match")
+        match_dataset_train, match_dataset_eval = prepare_data(site_name, input_columns, eval_years=eval_years, time_series=True, sequence_length=match_sequence_length,
+                                     ustar=ustar, season=season)
+        match_dates_train = match_dataset_train.get_dates()
+        match_dates_eval = match_dataset_eval.get_dates()
+
+    df = get_data(site_name)
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
-
     if input_columns is not None:
         df = df[['TIMESTAMP_START', *input_columns, 'USTAR', target_col]]
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
+    # get rolling window average and variance
     if stat_interval is not None:
         for col in input_columns:
             rolling_series = df[col].rolling(window=48*stat_interval, min_periods=5*stat_interval)
             df[col+'_rolling_var'] = rolling_series.var()
             df[col+'_rolling_avg'] = rolling_series.mean()
 
-
     # drop all rows where ustar is not sufficient
     if ustar == 'drop'or not time_series:
         df = df[df['USTAR'] > 0.2]
-    #print(f"Dropped {_nrows - len(df)}  rows with USTAR threshold ({len(df)})")
     
     # daylight hours
     df = df[df['PPFD_IN'] > 4.0]
@@ -199,18 +210,13 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     # perfect recording is 48 per day
     # with ~9 hours of daylight, the max daylight rows is 18
     _nrows = len(df_avg)
-    # TODO: if there aren't enough readings in a day and its surrounded by good days, impute from the surrounding days
-    # is very local linear interp okay @Loren ?
-    min_count = 1
+    min_count = 5
     #print(df_count.head())
     min_count_filter = df_count.drop(columns=['DAY']) >= min_count
-    #print(df_avg[~min_count_filter])
     df_X_y = df_avg[min_count_filter.all(axis=1)]
     # remove any NEE values with ustar below threshold
     if ustar=='na':
         df_X_y.loc[df_X_y['USTAR'] <= 0.2, 'NEE'] = np.NaN
-    #print(df_X_y.head())
-    #df_X_y = df_X_y.drop(columns=['DAY'])
     if len(df_X_y) == 0:
         print("No data after filtering")
         return None, None
@@ -222,30 +228,61 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
 
+    if season is not None:
+        # default to winter, and change datapoints to summer as needed
+        season_df = _df[['DAY', 'D_SNOW']].assign(SEASON='winter')
+        season_df.loc[:, 'YEAR'] = season_df['DAY'].dt.year
+        # safe to iterate on years with <20 years of data
+        for year in season_df['YEAR'].unique():
+            year_df = season_df[season_df['YEAR']==year]
+            # assume the last snow happens before august
+            jan_june_df = year_df[year_df['DAY'].dt.month <= 6]
+            # assume first snow happens after june
+            aug_dec_df = year_df[year_df['DAY'].dt.month >= 7]
+            # filter on snow depth > 0
+            jan_june_snow = jan_june_df.loc[jan_june_df['D_SNOW'] > 0]
+            # filter on snow depth > 0
+            aug_dec_snow = aug_dec_df.loc[aug_dec_df['D_SNOW'] > 0]
+            last_snow_idx = -1
+            first_snow_idx = -1
+            if len(jan_june_df) == 0 or len(jan_june_snow) == 0:
+                # if there is no snow data for the first half of the year (or no data at all)
+                # -> have the last snow index be the index of the first entry of aug_dec_df (assume it starts in summer)
+                # aug_dec_df is guaranteed to have data since otherwise this year wouldn't have been iterated on
+                last_snow_idx = aug_dec_df.index[0]
+            else:
+                # Get the index of the last matching row for the last snow
+                last_snow_idx = jan_june_snow[-1:].index[0]
+            if len(aug_dec_df) == 0 or len(aug_dec_snow) == 0:
+                # have first snow be the index after the last row in jan_june
+                # again, guaranteed to exist in this case since the year has at least one row in the dataset
+                first_snow_idx = jan_june_df.index[-1] + 1
+            else:
+                # Get the index of the first matching row for the first snow
+                first_snow_idx = aug_dec_snow.index[0]
+
+            print(f"For the year {year}, discovered a last snow index of {last_snow_idx} on {_df.loc[last_snow_idx, 'DAY']} and a first snow idx of {first_snow_idx} on {_df.loc[first_snow_idx, 'DAY']}")
+            # Finally, label every row between the discovered indices as summer
+            season_df.loc[last_snow_idx+1:first_snow_idx, 'SEASON'] = 'summer'
+        _df = _df[season_df['SEASON'] == season]
+
 
     if time_series:
         X_dataset = []
         y_dataset = []
         years_idx = []
         dates = []
-        def in_season(d : datetime.datetime, s : str):
-            if s is None:
-                return True
-            if s == 'winter':
-                return d - datetime.datetime(d.year if d.month==12 else d.year-1, 12, 21) <= datetime.timedelta(days=90)
-            if s == 'summer':
-                return d - datetime.datetime(d.year, 12, 21) <= datetime.timedelta(days=90)
-            else:
-                return False
         t = tqdm.tqdm(total = len(_df)-sequence_length)
         for i in range(len(_df)-sequence_length):
             t.update(1)
+            datapoint_date = _df['DAY'].iloc[i+sequence_length]
             # if there are any gaps, skip this iteration
-            if _df['DAY'].iloc[i] + pd.Timedelta(sequence_length, 'day') != _df['DAY'].iloc[i+sequence_length]:
+            if _df['DAY'].iloc[i] + pd.Timedelta(sequence_length, 'day') != datapoint_date:
                 continue
-            # if the datapoint is not in the desired season, skip
-            if not in_season(_df['DAY'].iloc[-1], season):
+            # if we are using match_sequence_length and the prediction date is not in the reference dataset, skip
+            if match_sequence_length is not None and datapoint_date not in match_dates_train and datapoint_date not in match_dates_eval:
                 continue
+
             df_seq = _df.iloc[i:i+sequence_length]
             # if the final day NEE is NaN, skip this iteration
             if pd.isna(df_seq['NEE']).iloc[-1]:
@@ -308,14 +345,9 @@ def prepare_data(site_name : Site, eval_years : int = 2, **kwargs) -> tuple[Amer
             return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
 
     else:
-        if season is not None:
-            solstice_mo = 6 if season=='winter' else 12 if season == 'summer' else None
-            _df['PREV_SOLSTICE'] = pd.to_datetime(_df['DAY'].apply(lambda dt: f"{dt.year:04}{solstice_mo:02}21"))
-            # e.g. day is 1-12-2020 and summer solstice is 6-21-2020, then solstice diff is negative
-            # day is 1-21-2020 and winter solstice is 12-21-2020, solstice diff is negative but <90 days (mod 365 days)
-            solstice_diff = (_df['DAY'] - _df['PREV_SOLSTICE']).apply(lambda td: td.days) % 365
-            _df = _df[solstice_diff < 90].drop(columns=['PREV_SOLSTICE'])
-
+        # only include rows that are found in the reference dataset
+        if match_sequence_length is not None:
+            _df = _df[_df['DAY'].isin(match_dates_train + match_dates_eval)]
         eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
         _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
         _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
