@@ -72,6 +72,7 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
     r2 = []
     sequence_args = default_hparams[model_class]
     sequence_args['time_series'] = True
+    sequence_args['match_sequence_length'] = max_sequence_length
     if model_class==DynamicANN:
         # TODO: or allow stat interval instead of flattened TS data
         sequence_args['flatten'] = True
