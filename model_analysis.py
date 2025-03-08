@@ -2,42 +2,42 @@ from torch import nn
 import numpy as np
 
 from data_handler import  Site, get_site_vars
-from train import train_test_eval, feature_pruning
+from train import train_test_eval, fmt_date_string #, feature_pruning
 from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest
 
 import matplotlib.pyplot as plt
 
-default_hparams = {DynamicANN: {'layer_dims': (6,6), 'epochs': 300, 'batch_size': 64, 'lr': [0.01, 0.001]},
-                   RNN: {'hidden_state_size': [8, 15], 'num_layers': [1,2], 'epochs': 200, 'batch_size': 64, 'lr': 0.01},
-                   LSTM: {'hidden_state_size': [8, 15], 'num_layers': 1, 'epochs': 200, 'batch_size': 32, 'lr': 0.01},
-                   XGBoost: {'lr': 0.5, 'n_estimators': 1000},
-                   RandomForest: {'n_estimators': 1000}}
+default_hparams = {DynamicANN: {'layer_dims': (6,6), 'epochs': [1000, 3000], 'batch_size': 64, 'lr': 0.001},
+                   RNN: {'hidden_state_size': [8, 15], 'num_layers': 1, 'epochs': 7000, 'batch_size': 64, 'lr': 0.001},
+                   LSTM: {'hidden_state_size': [8, 15], 'num_layers': 1, 'epochs': 7000, 'batch_size': 32, 'lr': 0.001},
+                   XGBoost: {'lr': 0.5, 'n_estimators': 10000},
+                   RandomForest: {'n_estimators': 10000}}
 
 def test_tte():
     simple_cols = ['P', 'PPFD_IN', 'D_SNOW']
     # This should take little time to run
     
-    print("TTE with DynamicANN")
-    train_test_eval(DynamicANN, site=Site.Me2, input_columns=simple_cols, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, lr=1e-2, batch_size=64)
-    print("TTE with DynamicANN & multiple stat intervals")
-    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
-    print("TTE with DynamicANN & ustar=na")
-    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, ustar='na')
-    # test time series + flatten for linear models
-    print("TTE with DynamicANN & flattened time series data")
-    train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7, flatten=True)
-    print("TTE with DynamicANN and seasonal data (summer)")
-    train_test_eval(DynamicANN, site=Site.Me2, num_folds=2, input_columns=simple_cols, epochs=2, season='summer')
+    # print("TTE with DynamicANN")
+    # train_test_eval(DynamicANN, site=Site.Me2, input_columns=simple_cols, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, lr=1e-2, batch_size=64)
+    # print("TTE with DynamicANN & multiple stat intervals")
+    # train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, stat_interval=[None,7,14])
+    # print("TTE with DynamicANN & ustar=na")
+    # train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, ustar='na')
+    # # test time series + flatten for linear models
+    # print("TTE with DynamicANN & flattened time series data")
+    # train_test_eval(DynamicANN, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, site=Site.Me2, input_columns=simple_cols, lr=1e-2, batch_size=64, time_series=True, sequence_length=7, flatten=True)
+    # print("TTE with DynamicANN and seasonal data (summer)")
+    # train_test_eval(DynamicANN, site=Site.Me2, num_folds=2, input_columns=simple_cols, epochs=2, season='summer')
     
     # test time series data preparation and RNN predictor model
     print("TTE with RNN and match sequence length")
     train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, lr=1e-2, batch_size=64, time_series=True, sequence_length=7, match_sequence_length=31)
-    print("TTE with RNN")
-    train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, slr=1e-2, batch_size=64, time_series=True, sequence_length=7)
-    print("TTE with RNN and ustar=na")
-    train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, sequence_length=12, time_series=True, ustar='na')
-    print("TTE with RNN and seasonal data (winter)")
-    train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, sequence_length=12, time_series=True, season='winter')
+    # print("TTE with RNN")
+    # train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, slr=1e-2, batch_size=64, time_series=True, sequence_length=7)
+    # print("TTE with RNN and ustar=na")
+    # train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, sequence_length=12, time_series=True, ustar='na')
+    # print("TTE with RNN and seasonal data (winter)")
+    # train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, sequence_length=12, time_series=True, season='winter')
     print("TTE with LSTM")
     train_test_eval(LSTM, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, lr=1e-2, batch_size=64, time_series=True, sequence_length=50)
 
@@ -65,28 +65,54 @@ def search_longest_sequence(input_columns, ustar=None):
     print(f"The longest sequence found was {longest_sequence_low}")
     return longest_sequence_low
 
-# TODO: count how many 1-day gaps there are
-
-
-def plot_sequence_importance(site, input_columns, model_class, max_sequence_length=90, **kwargs):
-    r2 = []
+def plot_sequence_importance(site, input_columns, model_class, max_sequence_length=90, flatten=False, **kwargs):
+    r2_results = []
+    mse_results = []
+    r2_t_results = []
+    mse_t_results = []
     sequence_args = default_hparams[model_class]
+    sequence_args.update(kwargs)
     sequence_args['time_series'] = True
     sequence_args['match_sequence_length'] = max_sequence_length
-    if model_class==DynamicANN:
-        # TODO: or allow stat interval instead of flattened TS data
-        sequence_args['flatten'] = True
-    
-    sequence_lengths = list(range(1, max_sequence_length))
-    for sl in range(1, max_sequence_length+1):
-        r2.append(train_test_eval(model_class, site, input_columns, num_folds=2, sequence_length=sl, **sequence_args))
 
+    if flatten and model_class.__name__ in ['RNN', 'LSTM']:
+        print("Argument error: model class cannot be an RNN and take flattened time series data")
+        return
+    
+    use_stat_interval = model_class.__name__ not in ['RNN', 'LSTM'] and not flatten
+    if use_stat_interval:
+        sequence_args['time_series'] = False
+    
+    sequence_lengths = list(range(1, max_sequence_length+1))
+    for sl in range(1, max_sequence_length+1):
+        sl_arg = {'stat_interval' if use_stat_interval else 'sequence_length': sl}
+        r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, **sl_arg, **sequence_args)
+        r2_results.append(r2)
+        r2_t_results.append(r2_t)
+        mse_results.append(mse)
+        mse_t_results.append(mse_t)
+
+    #plt.rcParams['text.usetex'] = True
+    dt_str = fmt_date_string()
+    # R-squared on both evaluation and training sets
     plt.clf()
-    plt.plot(sequence_lengths, r2)
+    plt.plot(sequence_lengths, r2_results, label='Mean '+'R^2'+' on evaluation set')
+    plt.plot(sequence_lengths, r2_t_results, label='Mean '+'R^2'+' on training set')
     plt.xlabel('Input Sequence Length (Days)')
-    plt.ylabel('R-Squared on the Evaluation Set')
+    plt.ylabel('R^2')
+    plt.legend()
     plt.title(f'Importance of Sequence Length for {model_class.__name__} Predictions')
-    plt.savefig(f'images/sequence_length_importance_{model_class.__name__}.png')
+    plt.savefig(f'images/sequence_length_importance-{dt_str}::{model_class.__name__}-r2.png')
+
+    # MSE on both evaluation and training sets
+    plt.clf()
+    plt.plot(sequence_lengths, mse_results, label='Mean MSE on evaluation set')
+    plt.plot(sequence_lengths, mse_t_results, label='Mean MSE on training set')
+    plt.xlabel('Input Sequence Length (Days)')
+    plt.ylabel('MSE')
+    plt.legend()
+    plt.title(f'Importance of Sequence Length for {model_class.__name__} Predictions')
+    plt.savefig(f'images/sequence_length_importance-{dt_str}::{model_class.__name__}-mse.png')
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -160,7 +186,22 @@ def main():
     ]
     ### Testing scripts - these usually evoke any bugs present in the project
     #test_sklearn()
-    test_tte()
+    #test_tte()
+    # Ensuring that these models are actually converging to some optimum by checking the training curves
+    #train_test_eval(DynamicANN, site, me2_input_column_set, epochs=2000, lr=0.001, layer_dims=(6,6), stat_interval=14)
+    #train_test_eval(LSTM, site, me2_input_column_set, epochs=10000, lr=0.001, sequence_length=21, match_sequence_length=31)
+    plot_sequence_importance(site, me2_input_column_set, LSTM, max_sequence_length=31, num_models=10, num_folds=2)
+
+    plot_sequence_importance(site, me2_input_column_set, RNN, max_sequence_length=31, num_models=10, num_folds=2)
+
+    plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=31, num_models=1, num_folds=1)
+    plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=31, num_models=1, num_folds=1, flatten=False)
+
+    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=1, num_folds=1)
+    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=1, num_folds=1, flatten=False)
+
+    plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=31, num_models=10)
+    plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=31, num_models=10, flatten=False)
 
     ### Example usage for the best_***_search functions
     #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])

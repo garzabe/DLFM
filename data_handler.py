@@ -136,19 +136,37 @@ def get_site_vars(site : Site):
     return data.columns.to_list()
 
 def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
-    print(kwargs)
+
+    ### Arguments for building time series data
+    # Rolling window statistics for use with DynamicANN and other non-sequence models
     stat_interval = kwargs.get('stat_interval', None)
-    time_series = kwargs.get('time_series', False)
-    sequence_length = kwargs.get('sequence_length', -1)
+    # Sequence length (in days) of the time series inputs - can range from 1 - ~200 days
+    sequence_length = kwargs.get('sequence_length', None)
+    # Due to limited data, longer sequence length arguments result in significantly smaller datasets
+    # Force smaller sequence length datasets to match datapoints to a longer sequence length
+    # Useful for comparing models across sequence lengths
     match_sequence_length = kwargs.get('match_sequence_length', None)
+    # Flatten time series data - useful for non-sequence models
     flatten = kwargs.get('flatten', False)
-    ustar = kwargs.get('ustar', 'drop') # defines the method of handling low ustar entries: current possible values are: drop, na
-    season = kwargs.get('season', None) # summer, winter
+
+    # defines the method of handling low ustar entries: current possible values are: drop, na
+    ustar = kwargs.get('ustar', 'drop') 
+    # Filter through only one season of data
+    # Options are:
+    # summer (last snow of winter to first snow of winter in same calendar year)
+    # winter (first snow to last snow)
+    season = kwargs.get('season', None)
+    # Include the target variable from the previous day
+    yesterday_NEE = kwargs.get('yesterday_NEE', False)
+    # Interpolate 1-day gaps in weather or climate data
+    interpolate = kwargs.get('interpolate', True)
+
+    time_series = sequence_length is not None
 
     # in the case we are using match_sequence_length, first get the set of prediction dates for the target dataset
     match_dates_train = None
     match_dates_eval = None
-    if match_sequence_length is not None:
+    if match_sequence_length is not None and sequence_length != match_sequence_length:
         print("Generating the reference dataset for our actual dataset to match")
         match_dataset_train, match_dataset_eval = prepare_data(site_name, input_columns, eval_years=eval_years, time_series=True, sequence_length=match_sequence_length,
                                      ustar=ustar, season=season)
@@ -187,8 +205,31 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
     df_avg = df.groupby('DAY').aggregate('mean').reset_index()
     df_count = df.groupby('DAY').aggregate('count').reset_index()
 
-    # TODO: if we can interpolate
-    if False:
+    # now only include the days where all column counts are above 20??
+    # perfect recording is 48 per day
+    # with ~9 hours of daylight, the max daylight rows is 18
+    _nrows = len(df_avg)
+    min_count = 5
+    #print(df_count.head())
+    nee_below_threshold = (df_avg['NEE'] == np.nan) | (df_count['NEE'] < min_count)
+    df_avg.loc[nee_below_threshold, 'NEE'] = np.nan
+    min_count_filter = df_count.drop(columns=['DAY', 'NEE']) >= min_count
+    df_X_y = df_avg[min_count_filter.all(axis=1)]
+    # remove any NEE values with ustar below threshold
+    if ustar=='na':
+        df_X_y.loc[df_X_y['USTAR'] <= 0.2, 'NEE'] = np.nan
+    if len(df_X_y) == 0:
+        print("No data after filtering")
+        return None, None
+
+    # normalize all data
+    # add these columns back at the end
+    _df = df_X_y.drop(columns=["DAY", "NEE", "USTAR"])
+    _df = (_df - _df.mean())/_df.std()
+    _df["DAY"] = df_X_y["DAY"]
+    _df["NEE"] = df_X_y["NEE"]
+
+    if interpolate:
         date_diffs = pd.DataFrame(df_avg['DAY'])
         date_diffs['TIMEDIFF'] = date_diffs['DAY'].diff()
         # Day | timediff between Day and previous row Day
@@ -202,31 +243,10 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         prev_days_count['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
         prev_days_count.fillna(1)
         
+        # interpolate the input data
         df_avg = pd.concat([df_avg, prev_days]).sort_values(by='DAY').interpolate(limit=1)
+
         df_count = pd.concat([df_count, prev_days_count]).sort_values(by='DAY')
-
-
-    # now only include the days where all column counts are above 20??
-    # perfect recording is 48 per day
-    # with ~9 hours of daylight, the max daylight rows is 18
-    _nrows = len(df_avg)
-    min_count = 5
-    #print(df_count.head())
-    min_count_filter = df_count.drop(columns=['DAY']) >= min_count
-    df_X_y = df_avg[min_count_filter.all(axis=1)]
-    # remove any NEE values with ustar below threshold
-    if ustar=='na':
-        df_X_y.loc[df_X_y['USTAR'] <= 0.2, 'NEE'] = np.NaN
-    if len(df_X_y) == 0:
-        print("No data after filtering")
-        return None, None
-
-    # normalize all data
-    # add these columns back at the end
-    _df = df_X_y.drop(columns=["DAY", "NEE", "USTAR"])
-    _df = (_df - _df.mean())/_df.std()
-    _df["DAY"] = df_X_y["DAY"]
-    _df["NEE"] = df_X_y["NEE"]
 
     if season is not None:
         # default to winter, and change datapoints to summer as needed
@@ -280,7 +300,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
             if _df['DAY'].iloc[i] + pd.Timedelta(sequence_length, 'day') != datapoint_date:
                 continue
             # if we are using match_sequence_length and the prediction date is not in the reference dataset, skip
-            if match_sequence_length is not None and datapoint_date not in match_dates_train and datapoint_date not in match_dates_eval:
+            if match_sequence_length is not None and sequence_length != match_sequence_length and \
+                    datapoint_date not in match_dates_train and datapoint_date not in match_dates_eval:
                 continue
 
             df_seq = _df.iloc[i:i+sequence_length]
@@ -345,9 +366,11 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
             return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
 
     else:
+        # if we are not generating time series data, we do not want any nans to remain in the dataset
+        _df = _df.dropna()
         # only include rows that are found in the reference dataset
         if match_sequence_length is not None:
-            _df = _df[_df['DAY'].isin(match_dates_train + match_dates_eval)]
+            _df = _df[_df['DAY'].isin(np.concatenate([match_dates_train, match_dates_eval]))]
         eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
         _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
         _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]

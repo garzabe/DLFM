@@ -4,6 +4,7 @@ from typing import Callable
 from abc import ABC, abstractmethod
 from xgboost import XGBRegressor
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error
 
 
 # This dictionary has a lot of use-cases:
@@ -15,7 +16,7 @@ MODEL_HYPERPARAMETERS : dict[str, dict[str, int | tuple[int] | Callable | None]]
     'XGBoost' : {'lr' : 0.5, 'n_estimators' : 100},
     'RandomForest' : {'n_estimators' : 100},
     'FirstANN' : {'epochs' : 100, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'stat_interval' : None, 'sequence_length' : None},
-    'DynamicANN' : {'layer_dims' : (6,6), 'epochs' : 300, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'stat_interval' : None, 'sequence_length' : None},
+    'DynamicANN' : {'layer_dims' : (6,6), 'epochs' : 300, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'stat_interval' : None, 'sequence_length' : None},
     'RNN' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 100, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'sequence_length' : 14, 'dropout' : 0.0},
     'LSTM' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 100, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.01, 'sequence_length' : 14, 'dropout' : 0.0},
     'xLSTM' : {}
@@ -64,7 +65,8 @@ class DynamicANN(NEPModel):
         self.stack  = nn.Sequential(*sequential_layers)
 
     def forward(self, x : torch.Tensor):
-        return self.stack(x)
+        out =  self.stack(x)
+        return out
 
 class RNN(NEPModel):
     def __init__(self, num_features : int, **kwargs):
@@ -126,9 +128,9 @@ class xLSTM(NEPModel):
 
 #-------------------------
 class XGBoost():
-    def __init__(self, lr=None, n_estimators=None, **kwargs):
-        # TODO: manually process model kwargs
-        model_kwargs = {}
+    def __init__(self, lr=None, n_estimators=None, epochs=100, **kwargs):
+        print(f"Epochs {epochs}")
+        model_kwargs = {'eval_metric': mean_squared_error}#, 'early_stopping_rounds': epochs}
         if lr is not None:
             model_kwargs['learning_rate'] = lr
         if n_estimators is not None:
@@ -136,7 +138,7 @@ class XGBoost():
         self.model : XGBRegressor = XGBRegressor(**model_kwargs)
 
     def fit(self, X, y):
-        return self.model.fit(X, y)
+        return self.model.fit(X, y, eval_set=[(X, y)], verbose=True)
 
     def predict(self, X):
         return self.model.predict(X)
@@ -154,7 +156,7 @@ class RandomForest():
         if n_estimators is not None:
             model_kwargs['n_estimators'] = n_estimators
         # TODO: process kwargs for randomforest relevant kwargs
-        self.model : RandomForestRegressor = RandomForestRegressor(**model_kwargs)
+        self.model : RandomForestRegressor = RandomForestRegressor(verbose=1, **model_kwargs)
 
     def fit(self, X, y):
         return self.model.fit(X, y)

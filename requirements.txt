@@ -6,3 +6,4 @@ torcheval
 scikit-learn
 tqdm
 xgboost
+latex
