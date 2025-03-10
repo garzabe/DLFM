@@ -184,24 +184,25 @@ def main():
         'WS',
         'TA_1_1_2'
     ]
+    MAX_SEQUENCE_LENGTH=14
     ### Testing scripts - these usually evoke any bugs present in the project
     #test_sklearn()
     #test_tte()
     # Ensuring that these models are actually converging to some optimum by checking the training curves
     #train_test_eval(DynamicANN, site, me2_input_column_set, epochs=2000, lr=0.001, layer_dims=(6,6), stat_interval=14)
     #train_test_eval(LSTM, site, me2_input_column_set, epochs=10000, lr=0.001, sequence_length=21, match_sequence_length=31)
-    plot_sequence_importance(site, me2_input_column_set, LSTM, max_sequence_length=31, num_models=10, num_folds=2)
+    plot_sequence_importance(site, me2_input_column_set, LSTM, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10, num_folds=2)
 
-    plot_sequence_importance(site, me2_input_column_set, RNN, max_sequence_length=31, num_models=10, num_folds=2)
+    plot_sequence_importance(site, me2_input_column_set, RNN, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10, num_folds=2)
 
-    plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=31, num_models=1, num_folds=1)
-    plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=31, num_models=1, num_folds=1, flatten=False)
+    plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1)
+    plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1, flatten=False)
 
-    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=1, num_folds=1)
-    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=1, num_folds=1, flatten=False)
+    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1)
+    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1, flatten=False)
 
-    plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=31, num_models=10)
-    plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=31, num_models=10, flatten=False)
+    plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10)
+    plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10, flatten=False)
 
     ### Example usage for the best_***_search functions
     #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])

@@ -121,9 +121,9 @@ def get_data(site : Site):
         raise ValueError("the provided site is invalid")
     filepath = ''
     if site == Site.Me2:
-        filepath = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_19-5/AMF_US-Me2_BASE_HH_19-5.csv'
+        filepath = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_20-5/AMF_US-Me2_BASE_HH_20-5.csv'
     elif site == Site.Me6:
-        filepath = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_16-5/AMF_US-Me6_BASE_HH_16-5.csv'
+        filepath = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_17-5/AMF_US-Me6_BASE_HH_17-5.csv'
 
     data = pd.read_csv(filepath, header=2).replace(-9999, np.nan)
 
