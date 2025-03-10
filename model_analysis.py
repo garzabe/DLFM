@@ -8,8 +8,8 @@ from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest
 import matplotlib.pyplot as plt
 
 default_hparams = {DynamicANN: {'layer_dims': (6,6), 'epochs': [1000, 3000], 'batch_size': 64, 'lr': 0.001},
-                   RNN: {'hidden_state_size': [8, 15], 'num_layers': 1, 'epochs': 7000, 'batch_size': 64, 'lr': 0.001},
-                   LSTM: {'hidden_state_size': [8, 15], 'num_layers': 1, 'epochs': 7000, 'batch_size': 32, 'lr': 0.001},
+                   RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001}, # [8, 15]
+                   LSTM: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 32, 'lr': 0.001}, # [8, 15]
                    XGBoost: {'lr': 0.5, 'n_estimators': 10000},
                    RandomForest: {'n_estimators': 10000}}
 
