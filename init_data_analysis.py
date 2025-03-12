@@ -43,8 +43,12 @@ column_labels = {'CO2': {'title':'Carbon Dioxide Content', 'y_label':'Mol fracti
 def main():
 
     nan_density_threshold = 0.3
-    me2_data = pd.read_csv('AmeriFLUX Data/AMF_US-Me2_BASE-BADM_19-5/AMF_US-Me2_BASE_HH_19-5.csv', header=2)
-    me6_data = pd.read_csv('AmeriFLUX Data/AMF_US-Me6_BASE-BADM_16-5/AMF_US-Me6_BASE_HH_16-5.csv', header=2)
+    filepath_old = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_19-5/AMF_US-Me2_BASE_HH_19-5.csv'
+    filepath_old_me6 = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_16-5/AMF_US-Me6_BASE_HH_16-5.csv'
+    me2_filepath = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_20-5/AMF_US-Me2_BASE_HH_20-5.csv'
+    me6_filepath = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_17-5/AMF_US-Me6_BASE_HH_17-5.csv'
+    me2_data = pd.read_csv(me2_filepath, header=2)
+    me6_data = pd.read_csv(me6_filepath, header=2)
 
     me2_data.replace(-9999, np.nan, inplace=True)
     me6_data.replace(-9999, np.nan, inplace=True)
@@ -53,23 +57,23 @@ def main():
     #print(me6_data[pd.notna(me6_data['PPFD_IN'])][['TIMESTAMP_START', 'PPFD_IN']])
     # what portion of each column is NA?
 
-    print('\nMe-2')
-    me2_drop_columns = []
-    me2_nan_densities = get_nan_densities(me2_data)
-    for column, density in me2_nan_densities.items():
-        print(f"{column} is {density:.3%} NaN")
-        if density > nan_density_threshold:
-            me2_drop_columns.append(column)
+    # print('\nMe-2')
+    # me2_drop_columns = []
+    # me2_nan_densities = get_nan_densities(me2_data)
+    # for column, density in me2_nan_densities.items():
+    #     print(f"{column} is {density:.3%} NaN")
+    #     if density > nan_density_threshold:
+    #         me2_drop_columns.append(column)
 
 
 
-    print('\nMe-6')
-    me6_drop_columns = []
-    me6_nan_densities = get_nan_densities(me6_data)
-    for column, density in me6_nan_densities.items():
-        print(f"{column} is {density:.3%} NaN")
-        if density > nan_density_threshold:
-            me6_drop_columns.append(column)
+    # print('\nMe-6')
+    # me6_drop_columns = []
+    # me6_nan_densities = get_nan_densities(me6_data)
+    # for column, density in me6_nan_densities.items():
+    #     print(f"{column} is {density:.3%} NaN")
+    #     if density > nan_density_threshold:
+    #         me6_drop_columns.append(column)
 
 
     print(me6_data.columns)
@@ -86,8 +90,8 @@ def main():
     'WS',
     'TA_1_1_2'
     ]
-    plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
-    plot_daily_avg(me2_data, 'SWC_3_7_1', 'Me-2', daytime_only=True)
+    #plot_daily_avg(me2_data, 'NEE_PI_F', 'Me-2', daytime_only=True)
+    plot_daily_avg(me6_data, 'NEE_PI_F', 'Me-6', daytime_only=True)
 
     #plot_daily_avg(me2_data, 'PPFD_IN', 'Me-2 Daytime', daytime_only=True)
     #plot_daily_avg(me2_data, 'GPP', 'Me-2')
@@ -101,7 +105,7 @@ def main():
 
 
     
-
+    #plot_annual_avg(me2_data, 'NEE_PI_F', 'Me-2')
     #lot_annual_avg(me2_data, 'RH', 'Me-2')
     #plot_annual_avg(me2_data, 'SWC_\d_2','Me-2')
     #plot_annual_avg(me2_data, 'TS', 'Me-2')
@@ -111,34 +115,34 @@ def main():
     #plot_annual_avg(me6_data, 'P', 'Me-6')
     #plot_annual_avg(me2_data, 'G', precision='MONTH')
     
-    month_datapoints = 1440
-    monthly_nan_densities : dict[str, list[float]] = {}
-    for m in range(0, len(me2_data)//1440):
-        month_data = me2_data.iloc[m:min(m+1440, len(me2_data))]
-        month_nan_densities = get_nan_densities(month_data)
-        for c, d in month_nan_densities.items():
-            monthly_nan_densities.setdefault(c, []).append(d)
+    # month_datapoints = 1440
+    # monthly_nan_densities : dict[str, list[float]] = {}
+    # for m in range(0, len(me2_data)//1440):
+    #     month_data = me2_data.iloc[m:min(m+1440, len(me2_data))]
+    #     month_nan_densities = get_nan_densities(month_data)
+    #     for c, d in month_nan_densities.items():
+    #         monthly_nan_densities.setdefault(c, []).append(d)
     
     
-    current_prefix = ''
-    for c, density_data in []: #monthly_nan_densities.items():
-        # lets plot cols with the same prefix on the same graph
-        c_prefix = c.split('_')[0]
-        if c_prefix != current_prefix:
-            # show the previous graph
-            if current_prefix != '':
-                plt.legend()
-                plt.show()
+    # current_prefix = ''
+    # for c, density_data in []: #monthly_nan_densities.items():
+    #     # lets plot cols with the same prefix on the same graph
+    #     c_prefix = c.split('_')[0]
+    #     if c_prefix != current_prefix:
+    #         # show the previous graph
+    #         if current_prefix != '':
+    #             plt.legend()
+    #             plt.show()
             
-            # set up the next graph
-            plt.clf()
-            current_prefix = c_prefix
-            plt.title(f"{current_prefix} not-NaN Density")
-            plt.ylim(-0.1, 1.1)
-            plt.yticks([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-            plt.xlabel('T - start [months]')
+    #         # set up the next graph
+    #         plt.clf()
+    #         current_prefix = c_prefix
+    #         plt.title(f"{current_prefix} not-NaN Density")
+    #         plt.ylim(-0.1, 1.1)
+    #         plt.yticks([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+    #         plt.xlabel('T - start [months]')
         
-        plt.plot(range(len(density_data)), [1-d for d in density_data], label=c)
+    #     plt.plot(range(len(density_data)), [1-d for d in density_data], label=c)
     
         
 

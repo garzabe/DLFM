@@ -24,7 +24,8 @@ HYPERPARAMETER_NAMES = {
     'hidden_state_size' : {'title' : 'Hidden State Size', 'abbreviation' : 'H'},
     'num_layers' : {'title' : 'Number Hidden Layers', 'abbreviation' : 'L'},
     'dropout' : {'title' : 'Dropout', 'abbreviation' : 'D'},
-    'n_estimators' : {'title': 'Number Estimators', 'abbreviation': 'NE'}
+    'n_estimators' : {'title': 'Number Estimators', 'abbreviation': 'NE'},
+    'weight_decay' : {'title': 'Weight Decay', 'abbreviation': 'WD'}
 }
 
 ##### Base Train, Test, Eval functions #######
@@ -114,7 +115,7 @@ def train_kfold(num_folds : int,
                 model_class : Type[nn.Module],
                 lr : float, bs : int, epochs : int, loss_fn : nn.Module,
                 train_data : AmeriFLUXDataset,
-                device, num_features, weight_decay=0,
+                device, num_features, weight_decay=0, optimizer_class=torch.optim.SGD,
                 **model_kwargs) -> float:
 
     r2_results = {}
@@ -159,7 +160,7 @@ def train_kfold(num_folds : int,
             test_loader = DataLoader(train_data, batch_size=1, sampler=test_subsampler)
 
             # Using SGD here but could also do Adam or others
-            optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
+            optimizer = optimizer_class(model.parameters(), lr=lr, weight_decay=weight_decay)
 
             history = train_test(train_loader, test_loader, model, epochs, loss_fn, optimizer, device,context='K-Fold', skip_curve=True)
             r2_results[fold] = history[-1]['r2']
@@ -196,6 +197,8 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
     # Accepted kwargs
     num_folds = kwargs.get('num_folds', 5)
     num_models = kwargs.get('num_models', 1)
+    optimizer_class = kwargs.get('optimizer_class', torch.optim.SGD)
+    #weight_decay = kwargs.get('weight_decay', 0)
     
     sklearn_model = model_name=='XGBoost' or model_name=='RandomForest'
 
@@ -319,9 +322,11 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
             model.fit(X, y)
         else:
             model : NEPModel = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, **best).to(device)
+            if i==0:
+                print(model)
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest
             eval_loader = DataLoader(eval_data, batch_size=64)
-            optimizer = torch.optim.SGD(model.parameters(), lr=best['lr'])
+            optimizer = optimizer_class(model.parameters(), lr=best['lr'], weight_decay=best['weight_decay'])
             final_model_history = train_test(train_loader, eval_loader, model, best['epochs'], loss_fn, optimizer, device, context='Best Model')
         models.append(model)
 
@@ -410,7 +415,7 @@ def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset,
         plt.gcf().autofmt_xdate()
         plt.ylabel("NEE")
         plt.legend()
-        plt.title(f"NEE Model Predictions on final year of {'training' if train else 'evaluation'} data {month_label}")
+        plt.suptitle(f"NEE Model Predictions on final year of {'training' if train else 'evaluation'} data {month_label}")
         subtitle = f"{type(model).__name__}"
         for hparam, value in hyperparams.items():
             if hparam=='r2' or hparam=='loss':
@@ -423,7 +428,11 @@ def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset,
             else:
                 val_fs = f'{value}'
             subtitle += f' | {abbr}: {val_fs}'
-        plt.suptitle(subtitle)
+        if 'sequence_length' in hyperparams:
+            subtitle = f'{hyperparams["sequence_length"]} day sequences'
+        if 'stat_interval' in hyperparams:
+            subtitle = f'{hyperparams["stat_interval"]} rolling day averages and variances'
+        plt.title(subtitle)
         #dt = datetime.datetime.now()
         #name = model.__class__.__name__
         plt.savefig(file.rstrip('.png') + f'-{month_label}.png')

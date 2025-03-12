@@ -209,7 +209,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
     # perfect recording is 48 per day
     # with ~9 hours of daylight, the max daylight rows is 18
     _nrows = len(df_avg)
-    min_count = 5
+    min_count = 10
     #print(df_count.head())
     nee_below_threshold = (df_avg['NEE'] == np.nan) | (df_count['NEE'] < min_count)
     df_avg.loc[nee_below_threshold, 'NEE'] = np.nan
@@ -222,31 +222,44 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         print("No data after filtering")
         return None, None
 
-    # normalize all data
-    # add these columns back at the end
-    _df = df_X_y.drop(columns=["DAY", "NEE", "USTAR"])
-    _df = (_df - _df.mean())/_df.std()
-    _df["DAY"] = df_X_y["DAY"]
-    _df["NEE"] = df_X_y["NEE"]
+    
+    
+    # df_X_y["YEAR"] = df_X_y['DAY'].dt.year
+    # annual_counts = df_X_y.groupby('YEAR').aggregate('count')
+    # #print(annual_counts.head(20))
+    # df_X_y.drop(columns=['YEAR'], inplace=True)
 
     if interpolate:
-        date_diffs = pd.DataFrame(df_avg['DAY'])
+        date_diffs = pd.DataFrame(df_X_y['DAY'])
         date_diffs['TIMEDIFF'] = date_diffs['DAY'].diff()
         # Day | timediff between Day and previous row Day
-        # if 
         single_day_gaps = (date_diffs['TIMEDIFF'] == pd.Timedelta(days=2))
         # insert the single days between single-day gaps and interpolate values (except NEE)
-        prev_days = pd.DataFrame(columns=df_avg.columns)
-        prev_days_count = pd.DataFrame(columns=df_count.columns)
+        prev_days = pd.DataFrame(columns=df_X_y.columns)
+        #prev_days_count = pd.DataFrame(columns=df_co.columns)
         # now we have all missing single-gap days in the form of the df_avg dataframe
         prev_days['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
-        prev_days_count['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
-        prev_days_count.fillna(1)
+        #prev_days_count['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
+        #prev_days_count.fillna(1)
         
         # interpolate the input data
-        df_avg = pd.concat([df_avg, prev_days]).sort_values(by='DAY').interpolate(limit=1)
+        df_interp = pd.concat([df_X_y, prev_days]).reset_index().sort_values(by='DAY')
+        # remember where the gaps are to remove NEE after interpolate
+        gap_filled = df_interp.isna().any(axis=1)
+        #print(df_interp[(df_interp['DAY'].dt.year==2006) & (df_interp['DAY'].dt.month==11)].head(30))
+        df_interp.interpolate(limit=1, inplace=True)
+        df_interp.loc[gap_filled, 'NEE'] = np.nan
+        #print(df_interp[(df_interp['DAY'].dt.year==2006) & (df_interp['DAY'].dt.month==11)].head(30))
+        df_X_y = df_interp.drop(columns=['index'])
+        #print(df_X_y.columns)
 
-        df_count = pd.concat([df_count, prev_days_count]).sort_values(by='DAY')
+    #print(df_X_y.head())
+    # df_X_y["YEAR"] = df_X_y['DAY'].dt.year
+    # annual_counts = df_X_y.groupby('YEAR').aggregate('count')
+    # #print(annual_counts.head(20))
+    # df_X_y.drop(columns=['YEAR'], inplace=True)
+
+    
 
     if season is not None:
         # default to winter, and change datapoints to summer as needed
@@ -286,6 +299,12 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
             season_df.loc[last_snow_idx+1:first_snow_idx, 'SEASON'] = 'summer'
         _df = _df[season_df['SEASON'] == season]
 
+    # normalize all remaining data
+    # add these columns back at the end
+    _df = df_X_y.drop(columns=["DAY", "NEE", "USTAR"])
+    _df = (_df - _df.mean())/_df.std()
+    _df["DAY"] = df_X_y["DAY"]
+    _df["NEE"] = df_X_y["NEE"]
 
     if time_series:
         X_dataset = []
@@ -375,3 +394,11 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
         _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
         return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
+    
+if __name__=='__main__':
+    from model_analysis import me2_input_column_set
+    train, test = prepare_data(Site.Me2, me2_input_column_set)
+    print(len(train), len(test))
+    for sl in [1,7,14,31,90,180]:
+        tr, te = prepare_data(Site.Me2, me2_input_column_set, sequence_length=sl)
+        print(f"sl: {len(tr) + len(te)}")
