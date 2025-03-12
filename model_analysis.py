@@ -1,4 +1,4 @@
-from torch import nn
+from torch import nn, optim
 import numpy as np
 
 from data_handler import  Site, get_site_vars
@@ -8,8 +8,8 @@ from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest
 import matplotlib.pyplot as plt
 
 default_hparams = {DynamicANN: {'layer_dims': (6,6), 'epochs': 300, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1},
-                   RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.1}, # [8, 15]
-                   LSTM: {'hidden_state_size': 8, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.1}, # [8, 15]
+                   RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1}, # [8, 15]
+                   LSTM: {'hidden_state_size': 8, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1}, # [8, 15]
                    XGBoost: {'lr': 0.5, 'n_estimators': 10000},
                    RandomForest: {'n_estimators': 10000}}
 
@@ -159,6 +159,7 @@ me2_input_column_set = [
         # 2 7 1 has really spotty data
         #'SWC_2_7_1',
         #'SWC_3_7_1',
+        'SWC_4_1_1',
         'SWC_1_2_1',
         'RH',
         'NETRAD',
@@ -170,6 +171,14 @@ me2_input_column_set = [
         'WS',
         # TA 1 1 1 has no data until 2007
         'TA_1_1_3',
+        # Trying out some new variables
+        'G_2_1_1',
+        'H',
+        'LW_IN',
+        'SW_IN',
+        'H2O',
+        'CO2',
+        'LE'
 ]
 
 me6_input_column_set = [
@@ -223,29 +232,33 @@ def main():
     # ]
     MAX_SEQUENCE_LENGTH=14
 
+    #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.Adam, lr=0.001)
+    #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.001)
+    #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.00, momentum=0.1)
+
     # new batch of hparam tuning - will take a long time to run
     # ~300 combos per model, 5 mins per combo, 12 models = ~12 days to run in total
     # check back in 3 days
     # 3 day sequences
-    best_rnn_search(site, me2_input_column_set, 3, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0])
+    best_rnn_search(site, me2_input_column_set, 3, model_class=LSTM, weight_decay=[0.0, 0.01, 0.001], momentum=[0.0, 0.1, 0.2])
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=3)
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=3, flatten=True)
 
     # check back in 3 days
     # 7 day sequences
-    best_rnn_search(site, me2_input_column_set, 7, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0])
+    best_rnn_search(site, me2_input_column_set, 7, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=7)
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=7, flatten=True)
 
     # check back in 3 days
     # 14 day sequences
-    best_rnn_search(site, me2_input_column_set, 14, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0])
+    best_rnn_search(site, me2_input_column_set, 14, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=14)
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=14, flatten=True)
 
     # check back in 3 days
     # 31 day sequences
-    best_rnn_search(site, me2_input_column_set, 31, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0])
+    best_rnn_search(site, me2_input_column_set, 31, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=31)
     best_vanilla_network_search(site, me2_input_column_set, sequence_length=31, flatten=True)
 

@@ -25,7 +25,8 @@ HYPERPARAMETER_NAMES = {
     'num_layers' : {'title' : 'Number Hidden Layers', 'abbreviation' : 'L'},
     'dropout' : {'title' : 'Dropout', 'abbreviation' : 'D'},
     'n_estimators' : {'title': 'Number Estimators', 'abbreviation': 'NE'},
-    'weight_decay' : {'title': 'Weight Decay', 'abbreviation': 'WD'}
+    'weight_decay' : {'title': 'Weight Decay', 'abbreviation': 'WD'},
+    'momentum' : {'title': 'Momentum', 'abbreviation': 'M'}
 }
 
 ##### Base Train, Test, Eval functions #######
@@ -115,7 +116,7 @@ def train_kfold(num_folds : int,
                 model_class : Type[nn.Module],
                 lr : float, bs : int, epochs : int, loss_fn : nn.Module,
                 train_data : AmeriFLUXDataset,
-                device, num_features, weight_decay=0, optimizer_class=torch.optim.SGD,
+                device, num_features, weight_decay=0, momentum=0, optimizer_class=torch.optim.SGD,
                 **model_kwargs) -> float:
 
     r2_results = {}
@@ -160,7 +161,7 @@ def train_kfold(num_folds : int,
             test_loader = DataLoader(train_data, batch_size=1, sampler=test_subsampler)
 
             # Using SGD here but could also do Adam or others
-            optimizer = optimizer_class(model.parameters(), lr=lr, weight_decay=weight_decay)
+            optimizer = optimizer_class(model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
 
             history = train_test(train_loader, test_loader, model, epochs, loss_fn, optimizer, device,context='K-Fold', skip_curve=True)
             r2_results[fold] = history[-1]['r2']
@@ -326,7 +327,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
                 print(model)
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest
             eval_loader = DataLoader(eval_data, batch_size=64)
-            optimizer = optimizer_class(model.parameters(), lr=best['lr'], weight_decay=best['weight_decay'])
+            optimizer = optimizer_class(model.parameters(), lr=best['lr'], weight_decay=best['weight_decay'], momentum=best['momentum'])
             final_model_history = train_test(train_loader, eval_loader, model, best['epochs'], loss_fn, optimizer, device, context='Best Model')
         models.append(model)
 

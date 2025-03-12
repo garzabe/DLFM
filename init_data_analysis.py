@@ -57,13 +57,13 @@ def main():
     #print(me6_data[pd.notna(me6_data['PPFD_IN'])][['TIMESTAMP_START', 'PPFD_IN']])
     # what portion of each column is NA?
 
-    # print('\nMe-2')
-    # me2_drop_columns = []
-    # me2_nan_densities = get_nan_densities(me2_data)
-    # for column, density in me2_nan_densities.items():
-    #     print(f"{column} is {density:.3%} NaN")
-    #     if density > nan_density_threshold:
-    #         me2_drop_columns.append(column)
+    print('\nMe-2')
+    me2_drop_columns = []
+    me2_nan_densities = get_nan_densities(me2_data)
+    for column, density in me2_nan_densities.items():
+        print(f"{column} is {density:.3%} NaN")
+        if density > nan_density_threshold:
+            me2_drop_columns.append(column)
 
 
 
@@ -76,7 +76,7 @@ def main():
     #         me6_drop_columns.append(column)
 
 
-    print(me6_data.columns)
+    #print(me6_data.columns)
     me6_input_column_set = [
     'D_SNOW',
     'SWC_1_5_1',
@@ -90,8 +90,8 @@ def main():
     'WS',
     'TA_1_1_2'
     ]
-    #plot_daily_avg(me2_data, 'NEE_PI_F', 'Me-2', daytime_only=True)
-    plot_daily_avg(me6_data, 'NEE_PI_F', 'Me-6', daytime_only=True)
+    #plot_daily_avg(me2_data, 'NEE_PI_F', 'Me-2', nighttime=True)
+    #plot_daily_avg(me6_data, 'NEE_PI_F', 'Me-6', daytime_only=True)
 
     #plot_daily_avg(me2_data, 'PPFD_IN', 'Me-2 Daytime', daytime_only=True)
     #plot_daily_avg(me2_data, 'GPP', 'Me-2')
@@ -105,7 +105,7 @@ def main():
 
 
     
-    #plot_annual_avg(me2_data, 'NEE_PI_F', 'Me-2')
+   #plot_annual_avg(me2_data, 'NEE_PI_F', 'Me-2')
     #lot_annual_avg(me2_data, 'RH', 'Me-2')
     #plot_annual_avg(me2_data, 'SWC_\d_2','Me-2')
     #plot_annual_avg(me2_data, 'TS', 'Me-2')
@@ -183,7 +183,7 @@ def plot_continuous_sequences(df: pd.DataFrame):
     axs.set_xlabel('Interval [days]')
     plt.show()
 
-def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, daytime_only=False):
+def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, daytime_only=False, nighttime=False):
     # get the matching columns
     cols = df.columns[df.columns.str.contains(f'^{col_category}_') | df.columns.str.contains(f'^{col_category}$')].to_list()
     col_title = column_labels[col_category]['title'] if col_category in column_labels.keys() else col_category
@@ -196,6 +196,8 @@ def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, day
     # remove nighttime rows
     if daytime_only:
         df = df[df['PPFD_IN'] > 1.0]
+    if nighttime:
+        df = df[df['PPFD_IN'] < 1.0]
 
     # simply strip the year, hours and minutes from each timestamp
     df_col = df[["DAY", *cols]]
@@ -233,6 +235,7 @@ def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, pre
     else:
         df['DAY'] = df['DATETIME'].apply(lambda dt: f"{dt.month:02}{dt.day:02}")
     print(df.head())
+    df = df[df['PPFD_IN'] < 1.0]
    
     # simply strip the year, hours and minutes from each timestamp
     df_col = df[[precision, *cols]]
