@@ -35,9 +35,11 @@ column_labels = {'CO2': {'title':'Carbon Dioxide Content', 'y_label':'Mol fracti
                 'LW_IN': {'title':'Incoming Longwave Radiation', 'y_label':'Flux (W m-2)'},
                 'LW_OUT': {'title':'Outgoing Longwave Radiation', 'y_label':'Flux (W m-2)'},
                 'P': {'title':'Precipitation', 'y_label':'Precipitation Height (mm)'},
-                'NEE': {'title':'Net Ecosystem Exchange', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
+                'NEE': {'title':'Net Ecosystem Exchange', 'y_label':r'Flux Density ($\mu$mol $m^{-2} s^{-1}$)'},
+                'NEP': {'title':'Net Ecosystem Productivity', 'y_label':'NEP ($\mu$mol $m^{-2} s^{-1}$)'},
                 'RECO': {'title':'Ecosystem Respiration', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
                 'GPP': {'title':'Gross Primary Productivity', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
+                'D_SNOW': {'title': 'Snow Depth', 'y_label':'Snow Depth (in)'},
                 }
 
 def main():
@@ -53,26 +55,7 @@ def main():
     #print(me6_data[pd.notna(me6_data['PPFD_IN'])][['TIMESTAMP_START', 'PPFD_IN']])
     # what portion of each column is NA?
 
-    print('\nMe-2')
-    me2_drop_columns = []
-    me2_nan_densities = get_nan_densities(me2_data)
-    for column, density in me2_nan_densities.items():
-        print(f"{column} is {density:.3%} NaN")
-        if density > nan_density_threshold:
-            me2_drop_columns.append(column)
 
-
-
-    print('\nMe-6')
-    me6_drop_columns = []
-    me6_nan_densities = get_nan_densities(me6_data)
-    for column, density in me6_nan_densities.items():
-        print(f"{column} is {density:.3%} NaN")
-        if density > nan_density_threshold:
-            me6_drop_columns.append(column)
-
-
-    print(me6_data.columns)
     me6_input_column_set = [
     'D_SNOW',
     'SWC_1_5_1',
@@ -86,8 +69,8 @@ def main():
     'WS',
     'TA_1_1_2'
     ]
-    plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
-    plot_daily_avg(me2_data, 'SWC_3_7_1', 'Me-2', daytime_only=True)
+    #plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
+    #plot_daily_avg(me2_data, 'SWC_3_7_1', 'Me-2', daytime_only=True)
 
     #plot_daily_avg(me2_data, 'PPFD_IN', 'Me-2 Daytime', daytime_only=True)
     #plot_daily_avg(me2_data, 'GPP', 'Me-2')
@@ -99,7 +82,7 @@ def main():
     
     #plot_annual_avg(me2_data, 'SWC_\d_7', 'Me-2')
 
-
+    plot_annual_avg(me2_data, 'P', '')
     
 
     #lot_annual_avg(me2_data, 'RH', 'Me-2')
@@ -110,7 +93,7 @@ def main():
     #plot_annual_avg(me6_data, 'TS', 'Me-6')
     #plot_annual_avg(me6_data, 'P', 'Me-6')
     #plot_annual_avg(me2_data, 'G', precision='MONTH')
-    
+    exit()
     month_datapoints = 1440
     monthly_nan_densities : dict[str, list[float]] = {}
     for m in range(0, len(me2_data)//1440):
@@ -219,7 +202,14 @@ def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, day
 
 def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, precision : str = 'DAY'):
     # get the matching columns
-    cols = df.columns[df.columns.str.contains(f'^{col_category}_') | df.columns.str.contains(f'^{col_category}$')].to_list()
+    # filter out nighttime data
+    df = df[df['PPFD_IN'] > 4.0]
+    df = df[df['USTAR'] > 0.2]
+    df.dropna(subset='NEE_PI_F', inplace=True)
+    _col = col_category
+    if col_category=='NEP':
+        _col = 'NEE'
+    cols = df.columns[df.columns.str.contains(f'^{_col}_') | df.columns.str.contains(f'^{_col}$')].to_list()
     col_title = column_labels[col_category]['title'] if col_category in column_labels.keys() else col_category
     col_ylabel = column_labels[col_category]['y_label'] if col_category in column_labels.keys() else ''
     ### reduce to daily averages
@@ -231,31 +221,53 @@ def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, pre
     print(df.head())
    
     # simply strip the year, hours and minutes from each timestamp
-    df_col = df[[precision, *cols]]
+    df_col = df[[precision, *cols, 'NEE_PI_F']]
     # get the daily mean for each included column
-    means = df_col.groupby(precision).aggregate(['mean','count']).reset_index()
+    means = df_col.groupby(precision).aggregate(['mean']).reset_index()
+    variances = df_col.groupby(precision).aggregate(['var']).reset_index()
+    quart25 = df_col.groupby(precision).quantile(0.25).reset_index()
+    quart75 = df_col.groupby(precision).quantile(0.75).reset_index()
+
     # sort 
     means.sort_values(precision, ascending=True,axis=0)
     fig, ax1 = plt.subplots()
+    
+    
     X = means[precision].to_list()
+    
+    ax2 = ax1.twinx()
+    y = means['NEE_PI_F']['mean'].to_list()
+    q25 = quart25['NEE_PI_F'].to_list()
+    q75 = quart75['NEE_PI_F'].to_list()
+    y = np.array([-_y for _y in y])
+    q25 = np.array([-_q for _q in q25])
+    q75 = np.array([-_q for _q in q75])
+    ax2.plot(X,y,label='NEP', alpha=0.5, color='tab:blue')
+    ax2.fill_between(X, q25, q75, alpha=0.1, color='tab:blue')
+    ax2.set_ylabel(column_labels['NEP']['y_label'])
+    
     for col in cols:
         y = means[col]['mean'].to_list()
-        ax1.plot(X, y, label=col)
+        q25 = quart25[col].to_list()
+        q75 = quart75[col].to_list()
+        if col_category == 'NEP':
+            y = np.array([-_y for _y in y])
+            q25 = np.array([-_q for _q in q25])
+            q75 = np.array([-_q for _q in q75])
+        ax1.plot(X, y, label='Precipitation', color='tab:red')
+        ax1.fill_between(X, q25, q75, alpha=0.2, color='tab:red')
     if precision=='MONTH':
         ax1.set_xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     else:
         ax1.set_xticks([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334])
     ax1.set_xticklabels(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
-    ax1.set_ylabel(col_ylabel)
-    """ax2 = ax1.twinx()
-    color = 'tab:blue'
-    ax2.set_ylabel('Data Count')
-    ax2.tick_params(axis='y', labelcolor=color)
-    for col in cols:
-        y = daily_means[col]['count'].to_list()
-        ax2.plot(X, y, label=col, color=color)"""
-    plt.suptitle(f'{title_prefix} - {col_title} - Year Averages')
-    ax1.legend()
+    ax1.set_ylim((0, 0.8))
+    ax1.set_ylabel(column_labels['P']['y_label'])
+    ax1.grid(color='0.95')
+    
+    plt.title(f'Precipitation Annual Average at US-Me2')
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
     plt.show()
 
 
