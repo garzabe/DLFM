@@ -143,7 +143,7 @@ def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=No
                     num_folds=7,
                     epochs=[500, 2000, 5000],
                     lr=[1e-2, 1e-3],
-                    batch_size=[32,64],
+                    batch_size=[64],
                     sequence_length= sequence_length, 
                     max_sequence_length=max_sequence_length,
                     hidden_state_size=[4,8,15],
@@ -236,31 +236,38 @@ def main():
     #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.001)
     #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.00, momentum=0.1)
 
+
+    ### Preliminary hparam tuning to find strictly better parameters
+    train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=7)
+    train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=14)
+
+
+
     # new batch of hparam tuning - will take a long time to run
     # ~300 combos per model, 5 mins per combo, 12 models = ~12 days to run in total
     # check back in 3 days
     # 3 day sequences
-    best_rnn_search(site, me2_input_column_set, 3, model_class=LSTM, weight_decay=[0.0, 0.01, 0.001], momentum=[0.0, 0.1, 0.2])
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=3)
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=3, flatten=True)
+    # best_rnn_search(site, me2_input_column_set, 3, model_class=LSTM, weight_decay=[0.0, 0.01, 0.001], momentum=[0.0, 0.1, 0.2])
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=3)
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=3, flatten=True)
 
     # check back in 3 days
     # 7 day sequences
-    best_rnn_search(site, me2_input_column_set, 7, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=7)
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=7, flatten=True)
+    # best_rnn_search(site, me2_input_column_set, 7, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=7)
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=7, flatten=True)
 
-    # check back in 3 days
-    # 14 day sequences
-    best_rnn_search(site, me2_input_column_set, 14, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=14)
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=14, flatten=True)
+    # # check back in 3 days
+    # # 14 day sequences
+    # best_rnn_search(site, me2_input_column_set, 14, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=14)
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=14, flatten=True)
 
-    # check back in 3 days
-    # 31 day sequences
-    best_rnn_search(site, me2_input_column_set, 31, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=31)
-    best_vanilla_network_search(site, me2_input_column_set, sequence_length=31, flatten=True)
+    # # check back in 3 days
+    # # 31 day sequences
+    # best_rnn_search(site, me2_input_column_set, 31, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=31)
+    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=31, flatten=True)
 
 
 
