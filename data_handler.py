@@ -38,8 +38,13 @@ class AmeriFLUXLinearDataset(Dataset):
     def __init__(self, df_X_y : pd.DataFrame):
         # hold onto the original dataframe
         self.df = df_X_y.reset_index(drop=True)
-        self.years = self.df['DAY'].dt.year.unique()
-        self.inputs : pd.DataFrame = self.df.drop(columns=['DAY', 'NEE'])
+
+        # use season years
+        #self.years = self.df['DAY'].dt.year.unique()
+        self.years = self.df['SEASON_YEAR'].unique()
+        self.years.sort()
+
+        self.inputs : pd.DataFrame = self.df.drop(columns=['DAY', 'SEASON_YEAR', 'NEE'])
         self.labels : pd.Series = self.df['NEE']
 
     def __len__(self, ):
@@ -260,51 +265,60 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
     # df_X_y.drop(columns=['YEAR'], inplace=True)
 
     
+    # assign seasons and season years
+    # default to winter, and change datapoints to summer as needed
+    # earliest data is Jan 2002, which corresponds to the season year of 2001 (summer 01 to winter 01-02)
+    season_df = df_X_y[['DAY', 'D_SNOW']].assign(SEASON='winter', SEASON_YEAR=2001)
+    season_df.loc[:, 'YEAR'] = season_df['DAY'].dt.year
+    # safe to iterate on years with <20 years of data
+    years = season_df['YEAR'].unique()
+    years.sort()
+    for year in years:
+        year_df = season_df[season_df['YEAR']==year]
+        # assume the last snow happens before august
+        jan_june_df = year_df[year_df['DAY'].dt.month <= 6]
+        # assume first snow happens after june
+        aug_dec_df = year_df[year_df['DAY'].dt.month >= 7]
+        # filter on snow depth > 0
+        jan_june_snow = jan_june_df.loc[jan_june_df['D_SNOW'] > 0]
+        # filter on snow depth > 0
+        aug_dec_snow = aug_dec_df.loc[aug_dec_df['D_SNOW'] > 0]
+        last_snow_idx = -1
+        first_snow_idx = -1
+        if len(jan_june_df) == 0 or len(jan_june_snow) == 0:
+            # if there is no snow data for the first half of the year (or no data at all)
+            # -> have the last snow index be the index of the first entry of aug_dec_df (assume it starts in summer)
+            # aug_dec_df is guaranteed to have data since otherwise this year wouldn't have been iterated on
+            last_snow_idx = aug_dec_df.index[0]
+        else:
+            # Get the index of the last matching row for the last snow
+            last_snow_idx = jan_june_snow[-1:].index[0]
+        if len(aug_dec_df) == 0 or len(aug_dec_snow) == 0:
+            # have first snow be the index after the last row in jan_june
+            # again, guaranteed to exist in this case since the year has at least one row in the dataset
+            first_snow_idx = jan_june_df.index[-1] + 1
+        else:
+            # Get the index of the first matching row for the first snow
+            first_snow_idx = aug_dec_snow.index[0]
 
+        print(f"For the year {year}, discovered a last snow index of {last_snow_idx} on {df_X_y.loc[last_snow_idx, 'DAY']} and a first snow idx of {first_snow_idx} on {df_X_y.loc[first_snow_idx, 'DAY']}")
+        # Finally, label every row between the discovered indices as summer
+        season_df.loc[last_snow_idx+1:first_snow_idx, 'SEASON'] = 'summer'
+        # assign each row after the start of this season-year to the current year
+        # later years will get updated in later iterations
+        season_df.loc[last_snow_idx+1:, 'SEASON_YEAR'] = year
+    df_X_y['SEASON_YEAR'] = season_df['SEASON_YEAR']
+    # if training on a specific season, filter out other season
     if season is not None:
-        # default to winter, and change datapoints to summer as needed
-        season_df = _df[['DAY', 'D_SNOW']].assign(SEASON='winter')
-        season_df.loc[:, 'YEAR'] = season_df['DAY'].dt.year
-        # safe to iterate on years with <20 years of data
-        for year in season_df['YEAR'].unique():
-            year_df = season_df[season_df['YEAR']==year]
-            # assume the last snow happens before august
-            jan_june_df = year_df[year_df['DAY'].dt.month <= 6]
-            # assume first snow happens after june
-            aug_dec_df = year_df[year_df['DAY'].dt.month >= 7]
-            # filter on snow depth > 0
-            jan_june_snow = jan_june_df.loc[jan_june_df['D_SNOW'] > 0]
-            # filter on snow depth > 0
-            aug_dec_snow = aug_dec_df.loc[aug_dec_df['D_SNOW'] > 0]
-            last_snow_idx = -1
-            first_snow_idx = -1
-            if len(jan_june_df) == 0 or len(jan_june_snow) == 0:
-                # if there is no snow data for the first half of the year (or no data at all)
-                # -> have the last snow index be the index of the first entry of aug_dec_df (assume it starts in summer)
-                # aug_dec_df is guaranteed to have data since otherwise this year wouldn't have been iterated on
-                last_snow_idx = aug_dec_df.index[0]
-            else:
-                # Get the index of the last matching row for the last snow
-                last_snow_idx = jan_june_snow[-1:].index[0]
-            if len(aug_dec_df) == 0 or len(aug_dec_snow) == 0:
-                # have first snow be the index after the last row in jan_june
-                # again, guaranteed to exist in this case since the year has at least one row in the dataset
-                first_snow_idx = jan_june_df.index[-1] + 1
-            else:
-                # Get the index of the first matching row for the first snow
-                first_snow_idx = aug_dec_snow.index[0]
-
-            print(f"For the year {year}, discovered a last snow index of {last_snow_idx} on {_df.loc[last_snow_idx, 'DAY']} and a first snow idx of {first_snow_idx} on {_df.loc[first_snow_idx, 'DAY']}")
-            # Finally, label every row between the discovered indices as summer
-            season_df.loc[last_snow_idx+1:first_snow_idx, 'SEASON'] = 'summer'
-        _df = _df[season_df['SEASON'] == season]
+        df_X_y = df_X_y[season_df['SEASON'] == season]
 
     # normalize all remaining data
     # add these columns back at the end
-    _df = df_X_y.drop(columns=["DAY", "NEE", "USTAR"])
+    _df = df_X_y.drop(columns=["DAY", "NEE", "SEASON_YEAR", "USTAR"])
     _df = (_df - _df.mean())/_df.std()
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
+    _df["SEASON_YEAR"] = df_X_y['SEASON_YEAR']
 
     if time_series:
         X_dataset = []
@@ -327,9 +341,13 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
             # if the final day NEE is NaN, skip this iteration
             if pd.isna(df_seq['NEE']).iloc[-1]:
                 continue
-            year = df_seq['DAY'].dt.year.iloc[-1]
+
+            # use season year 
+            #year = df_seq['DAY'].dt.year.iloc[-1]
+            year = df_seq['SEASON_YEAR'].iloc[-1]
+
             date = df_seq['DAY'].iloc[-1]
-            df_seq = df_seq.drop(columns=['DAY'])
+            df_seq = df_seq.drop(columns=['DAY', 'SEASON_YEAR'])
 
             X_seq = df_seq.drop(columns=["NEE"]).to_numpy(dtype=np.float32)
             #print(X_seq)
@@ -343,6 +361,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         if len(X_dataset) == 0:
             return None, None
         years_ref = np.unique(years_idx)
+        print(f"Dataset resulted in the following season years: {years_ref}")
         if len(years_ref) <= eval_years:
             print(f"There are not enough unique years in the dataset to have {eval_years} evaluation years")
             if len(years_ref)==1:

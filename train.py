@@ -291,7 +291,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
                                 candidate.get('batch_size', -1),
                                 candidate.get('epochs', -1),
                                 loss_fn, train_data, device, num_features*data_candidate['sequence_length'] if time_series and flatten else num_features,
-                                **candidate_subset)
+                                **candidate_subset, **data_candidate)
                 history.append(candidate | data_candidate | {'train_size' : len(train_data)})
                 history[-1]['r2'] = r2
                 history[-1]['loss'] = loss
@@ -317,12 +317,12 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
         else:
             train_data, eval_data = prepare_data(site, input_columns, **data_best, **kwargs)
         if sklearn_model:
-            model : XGBoost | RandomForest = model_class(**best)
+            model : XGBoost | RandomForest = model_class(**best, **data_best)
             X = train_data.get_X()
             y = train_data.get_y()
             model.fit(X, y)
         else:
-            model : NEPModel = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, **best).to(device)
+            model : NEPModel = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, **best, **data_best).to(device)
             if i==0:
                 print(model)
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest

@@ -3,19 +3,23 @@ import numpy as np
 
 from data_handler import  Site, get_site_vars
 from train import train_test_eval, fmt_date_string #, feature_pruning
-from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest
+from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest, xLSTM
 
 import matplotlib.pyplot as plt
 
 default_hparams = {DynamicANN: {'layer_dims': (6,6), 'epochs': 300, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1},
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1}, # [8, 15]
                    LSTM: {'hidden_state_size': 8, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1}, # [8, 15]
+                   xLSTM: {'epochs': 500, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.0},
                    XGBoost: {'lr': 0.5, 'n_estimators': 10000},
                    RandomForest: {'n_estimators': 10000}}
 
 def test_tte():
     simple_cols = ['P', 'PPFD_IN', 'D_SNOW']
     # This should take little time to run
+
+    print("TTE with xLSTM")
+    train_test_eval(xLSTM, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, slr=1e-2, batch_size=64, time_series=True, sequence_length=7)
     
     # print("TTE with DynamicANN")
     # train_test_eval(DynamicANN, site=Site.Me2, input_columns=simple_cols, layer_dims=[(2,),(2,2)], num_folds=2, epochs=5, lr=1e-2, batch_size=64)
@@ -30,16 +34,16 @@ def test_tte():
     # train_test_eval(DynamicANN, site=Site.Me2, num_folds=2, input_columns=simple_cols, epochs=2, season='summer')
     
     # test time series data preparation and RNN predictor model
-    print("TTE with RNN and match sequence length")
-    train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, lr=1e-2, batch_size=64, time_series=True, sequence_length=7, match_sequence_length=31)
+    #print("TTE with RNN and match sequence length")
+    #train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, lr=1e-2, batch_size=64, time_series=True, sequence_length=7, match_sequence_length=31)
     # print("TTE with RNN")
     # train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, slr=1e-2, batch_size=64, time_series=True, sequence_length=7)
     # print("TTE with RNN and ustar=na")
     # train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, sequence_length=12, time_series=True, ustar='na')
     # print("TTE with RNN and seasonal data (winter)")
     # train_test_eval(RNN, site=Site.Me2, input_columns=simple_cols, num_folds=2, sequence_length=12, time_series=True, season='winter')
-    print("TTE with LSTM")
-    train_test_eval(LSTM, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, lr=1e-2, batch_size=64, time_series=True, sequence_length=50)
+    #print("TTE with LSTM")
+    #train_test_eval(LSTM, site=Site.Me2, input_columns=simple_cols, num_folds=2, epochs=1, lr=1e-2, batch_size=64, time_series=True, sequence_length=50)
 
 def test_sklearn():
     simple_cols=['P','PPFD_IN']
@@ -92,23 +96,42 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
         mse_results.append(mse)
         mse_t_results.append(mse_t)
 
+    r2_results.sort()
+    r2_t_results.sort()
+    mse_results.sort()
+    mse_t_results.sort()
+    r2_25 = np.percentile(r2_results, 25)
+    r2_75 = np.percentile(r2_results, 75)
+    r2_t_25 = np.percentile(r2_t_results, 25)
+    r2_t_75 = np.percentile(r2_t_results, 75)
+    mse_25 = np.percentile(mse_results, 25)
+    mse_75 = np.percentile(mse_results, 75)
+    mse_t_25 = np.percentile(mse_t_results, 25)
+    mse_t_75 = np.percentile(mse_t_results, 75)
+
+    r2_results
+
     #plt.rcParams['text.usetex'] = True
     dt_str = fmt_date_string()
     # R-squared on both evaluation and training sets
     plt.clf()
     plt.plot(sequence_lengths, r2_results, label='Mean '+r'R^2'+' on evaluation set')
+    plt.fill_between(sequence_lengths, r2_25, r2_75, alpha=0.1)
     plt.plot(sequence_lengths, r2_t_results, label='Mean '+r'R^2'+' on training set')
+    plt.fill_between(sequence_lengths, r2_t_25, r2_t_75, alpha=0.1)
     plt.xlabel('Input Sequence Length (Days)')
     plt.ylabel('R^2')
     plt.legend()
-    plt.ylim((0.5, 1.0))
+    plt.ylim((0.1, 1.0))
     plt.title(f'Importance of Sequence Length for {model_class.__name__} Predictions')
     plt.savefig(f'images/sequence_length_importance-{dt_str}::{model_class.__name__}-r2.png')
 
     # MSE on both evaluation and training sets
     plt.clf()
     plt.plot(sequence_lengths, mse_results, label='Mean MSE on evaluation set')
+    plt.fill_between(sequence_lengths, mse_25, mse_75, alpha=0.1)
     plt.plot(sequence_lengths, mse_t_results, label='Mean MSE on training set')
+    plt.fill_between(sequence_lengths, mse_t_25, mse_t_75, alpha=0.1)
     plt.xlabel('Input Sequence Length (Days)')
     
     plt.ylabel('MSE')
@@ -235,11 +258,12 @@ def main():
     #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.Adam, lr=0.001)
     #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.001)
     #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.00, momentum=0.1)
+    #train_test_eval(xLSTM, site, me2_input_column_set, sequence_length=7)
 
 
     ### Preliminary hparam tuning to find strictly better parameters
-    train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=7)
-    train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=14)
+    #train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=7)
+    #train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=14)
 
 
 
@@ -273,7 +297,7 @@ def main():
 
     ### Testing scripts - these usually evoke any bugs present in the project
     #test_sklearn()
-    #test_tte()
+    test_tte()
     # Ensuring that these models are actually converging to some optimum by checking the training curves
     #train_test_eval(DynamicANN, site, me2_input_column_set, epochs=2000, lr=0.001, layer_dims=(6,6), stat_interval=14)
     #train_test_eval(LSTM, site, me2_input_column_set, epochs=[2000, 10000], lr=[0.01, 0.001], weight_decay=[0, 0.1, 0.01], sequence_length=7, match_sequence_length=14, num_folds=3)

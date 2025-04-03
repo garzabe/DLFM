@@ -54,6 +54,81 @@ def main():
 
     me2_data.replace(-9999, np.nan, inplace=True)
     me6_data.replace(-9999, np.nan, inplace=True)
+    me2_input_column_set = [
+        'D_SNOW',
+        # no data until 2006
+        'SWC_1_7_1',
+        # 2 7 1 has really spotty data
+        #'SWC_2_7_1',
+        #'SWC_3_7_1',
+        'SWC_4_1_1',
+        'SWC_1_2_1',
+        'RH',
+        'NETRAD',
+        'PPFD_IN',
+        'TS_1_3_1',
+        #'V_SIGMA',
+        'P',
+        'WD',
+        'WS',
+        # TA 1 1 1 has no data until 2007
+        'TA_1_1_3',
+        # Trying out some new variables
+        'G_2_1_1',
+        'H',
+        'LW_IN',
+        'SW_IN',
+        'H2O',
+        'CO2',
+        'LE'
+    ]
+    me2_data = me2_data[['TIMESTAMP_START', *me2_input_column_set, 'NEE_PI_F']]
+    print(f"Before preprocessing, there are {len(me2_data)} datapoints")
+
+    # drop rows with NA that are NOT the target variable
+    me2_data.dropna(subset=me2_data.drop(columns=['NEE_PI_F']).columns, how='any', inplace=True)
+    print(f"After dropping nans, there are {len(me2_data)} datapoints remaining")
+
+    me2_data['TIME'] = pd.to_datetime(me2_data['TIMESTAMP_START'], format="%Y%m%d%H%M")
+
+    #me2_data['TIME_DIFF'] = me2_data['TIME'].diff()
+    # drop the first element since it cannot have a time gap
+    #me2_data = me2_data.iloc[1:]
+    # num_gaps = []
+    # max_hh_gap = 30
+    # for half_hours in range(1, max_hh_gap):
+    #     gaps = me2_data['TIME_DIFF'] == pd.Timedelta(minutes=30*half_hours)
+    #     num_gaps.append(len(me2_data[gaps]))
+    #     print(f"There are {len(me2_data[gaps])} {half_hours-1}-half-hour gaps in the dataset")
+    # plt.clf()
+    # plt.plot(list(range(1,max_hh_gap)), num_gaps)
+    # plt.xlabel("Gap time interval (half-hours)")
+    # plt.ylabel("Number of gaps in the dataset")
+    # plt.show()
+
+    print("1 period")
+    print(me2_data['TIME'].diff())
+    print("2 periods")
+    print(me2_data['TIME'].diff(periods=2))
+    print(me2_data['TIME'].diff(periods=2) == pd.Timedelta(minutes=60))
+
+
+    # continuous sequences
+    continuous_sequences = []
+    for half_hours in range(2, 2000):
+        _me2 = me2_data.iloc[half_hours:]
+        start_end_diff = _me2['TIME'].diff(periods=half_hours)
+        continuous = start_end_diff == pd.Timedelta(minutes=30*half_hours)
+        continuous_sequences.append(len(_me2[continuous]))
+    plt.clf()
+    plt.plot(list(range(2, 2000)), continuous_sequences)
+    plt.xlabel('Length of continuous sequence (half-hours)')
+    plt.ylabel('Number of continuous sequences')
+    plt.axvline(x=48 , label = '1 day')
+    plt.axvline(x=336, label='1 week')
+    plt.axvline(x=1344, label='1 month')
+    plt.show()
+        
 
 
     #print(me6_data[pd.notna(me6_data['PPFD_IN'])][['TIMESTAMP_START', 'PPFD_IN']])
@@ -90,6 +165,7 @@ def main():
 
     #plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
     #plot_daily_avg(me2_data, 'SWC_3_7_1', 'Me-2', daytime_only=True)
+    plot_daily_avg(me2_data, 'NEE_PI', 'Me-2')
 
 
 
@@ -103,9 +179,10 @@ def main():
     
     #plot_annual_avg(me2_data, 'SWC_\d_7', 'Me-2')
 
-    plot_annual_avg(me2_data, 'P', '')
+    #plot_annual_avg(me2_data, 'P', '')
     
    #plot_annual_avg(me2_data, 'NEE_PI_F', 'Me-2')
+    #plot_annual_avg(me6_data, 'NEE_PI', 'Me-6')
     #lot_annual_avg(me2_data, 'RH', 'Me-2')
     #plot_annual_avg(me2_data, 'SWC_\d_2','Me-2')
     #plot_annual_avg(me2_data, 'TS', 'Me-2')
