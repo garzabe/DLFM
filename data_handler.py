@@ -136,11 +136,11 @@ def get_data(site : Site):
 
 def get_site_vars(site : Site):
     if not isinstance(site, Site):
-        raise ValueError("the provided site is invali")
+        raise ValueError("the provided site is invalid")
     data = get_data(site)
     return data.columns.to_list()
 
-def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
 
     ### Arguments for building time series data
     # Rolling window statistics for use with DynamicANN and other non-sequence models
@@ -155,7 +155,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
     flatten = kwargs.get('flatten', False)
 
     # defines the method of handling low ustar entries: current possible values are: drop, na
-    ustar = kwargs.get('ustar', 'drop') 
+    ustar = kwargs.get('ustar', 'na') 
     # Filter through only one season of data
     # Options are:
     # summer (last snow of winter to first snow of winter in same calendar year)
@@ -179,6 +179,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         match_dates_eval = match_dataset_eval.get_dates()
 
     df = get_data(site_name)
+    
     # reduce the columns to our desired set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
     if input_columns is not None:
@@ -192,14 +193,13 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
             df[col+'_rolling_var'] = rolling_series.var()
             df[col+'_rolling_avg'] = rolling_series.mean()
 
+    
     # drop all rows where ustar is not sufficient
-    if ustar == 'drop'or not time_series:
+    if ustar == 'drop' or not time_series:
         df = df[df['USTAR'] > 0.2]
     
     # daylight hours
     df = df[df['PPFD_IN'] > 4.0]
-
-    _nrows = len(df)
 
     # group into daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
@@ -214,7 +214,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
     # perfect recording is 48 per day
     # with ~9 hours of daylight, the max daylight rows is 18
     _nrows = len(df_avg)
-    min_count = 10
+    min_count = 9
     #print(df_count.head())
     nee_below_threshold = (df_avg['NEE'] == np.nan) | (df_count['NEE'] < min_count)
     df_avg.loc[nee_below_threshold, 'NEE'] = np.nan
@@ -267,12 +267,12 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
     
     # assign seasons and season years
     # default to winter, and change datapoints to summer as needed
-    # earliest data is Jan 2002, which corresponds to the season year of 2001 (summer 01 to winter 01-02)
-    season_df = df_X_y[['DAY', 'D_SNOW']].assign(SEASON='winter', SEASON_YEAR=2001)
+    season_df = df_X_y[['DAY', 'D_SNOW', 'P']].assign(SEASON='winter')
     season_df.loc[:, 'YEAR'] = season_df['DAY'].dt.year
     # safe to iterate on years with <20 years of data
     years = season_df['YEAR'].unique()
     years.sort()
+    season_df = season_df.assign(SEASON_YEAR=min(years))
     for year in years:
         year_df = season_df[season_df['YEAR']==year]
         # assume the last snow happens before august
@@ -285,6 +285,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         aug_dec_snow = aug_dec_df.loc[aug_dec_df['D_SNOW'] > 0]
         last_snow_idx = -1
         first_snow_idx = -1
+        # if len(jan_june_snow) == 0 and len(aug_dec_snow) == 0:
+        #     print(f"No snow data for the year {year}")
         if len(jan_june_df) == 0 or len(jan_june_snow) == 0:
             # if there is no snow data for the first half of the year (or no data at all)
             # -> have the last snow index be the index of the first entry of aug_dec_df (assume it starts in summer)
@@ -301,17 +303,26 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
             # Get the index of the first matching row for the first snow
             first_snow_idx = aug_dec_snow.index[0]
 
-        print(f"For the year {year}, discovered a last snow index of {last_snow_idx} on {df_X_y.loc[last_snow_idx, 'DAY']} and a first snow idx of {first_snow_idx} on {df_X_y.loc[first_snow_idx, 'DAY']}")
         # Finally, label every row between the discovered indices as summer
         season_df.loc[last_snow_idx+1:first_snow_idx, 'SEASON'] = 'summer'
         # assign each row after the start of this season-year to the current year
         # later years will get updated in later iterations
         season_df.loc[last_snow_idx+1:, 'SEASON_YEAR'] = year
     df_X_y['SEASON_YEAR'] = season_df['SEASON_YEAR']
+
+
     # if training on a specific season, filter out other season
     if season is not None:
         df_X_y = df_X_y[season_df['SEASON'] == season]
-
+        #years = df_X_y['SEASON_YEAR'].unique()
+        #import matplotlib.pyplot as plt
+        #for i in range(len(years)):
+        #    _plot = df_X_y[df_X_y['SEASON_YEAR']==years[i]]
+        #    plt.clf()
+        #    plt.plot(_plot['DAY'], _plot['NEE'])
+        #    plt.title(f'season year {years[i]}')
+        #    plt.show()
+        
     # normalize all remaining data
     # add these columns back at the end
     _df = df_X_y.drop(columns=["DAY", "NEE", "SEASON_YEAR", "USTAR"])
@@ -380,8 +391,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         X_eval = np.array(X_dataset[eval_idx:])
         y_eval = np.array(y_dataset[eval_idx:])
         dates_eval = np.array(dates[eval_idx:])
-        train_years_idx = years_idx[0:eval_idx]
-        eval_years_idx = years_idx[eval_idx:]
+        train_years_idx =np.array(years_idx[0:eval_idx])
+        eval_years_idx = np.array(years_idx[eval_idx:])
         print(f"The training set has {len(X_train)} rows and the evaluation set has {len(X_eval)} rows")
         if len(X_eval) <= 1:
             print("The evaluation set does not have enough data to compute an R-squared metric")
@@ -393,12 +404,14 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
             X_df_train = pd.DataFrame(X_train.reshape((train_size, sequence_length*input_size)))
             y_df_train = pd.DataFrame(y_train.reshape((train_size, 1)), columns=['NEE'])
             dates_df_train = pd.DataFrame(dates_train.reshape((train_size, 1)), columns=['DAY'])
-            df_train = pd.concat([X_df_train, y_df_train, dates_df_train], axis=1)
+            years_df_train = pd.DataFrame(train_years_idx.reshape((train_size, 1)), columns=['SEASON_YEAR'])
+            df_train = pd.concat([X_df_train, y_df_train, dates_df_train, years_df_train], axis=1)
 
             X_df_eval = pd.DataFrame(X_eval.reshape((eval_size, sequence_length*input_size)))
             y_df_eval = pd.DataFrame(y_eval.reshape((eval_size, 1)), columns=['NEE'])
             dates_eval = pd.DataFrame(dates_eval.reshape((eval_size, 1)), columns=['DAY'])
-            df_eval = pd.concat([X_df_eval, y_df_eval, dates_eval], axis=1)
+            years_eval = pd.DataFrame(eval_years_idx.reshape((eval_size, 1)), columns=['SEASON_YEAR'])
+            df_eval = pd.concat([X_df_eval, y_df_eval, dates_eval, years_eval], axis=1)
             return AmeriFLUXLinearDataset(df_train), AmeriFLUXLinearDataset(df_eval)
         else:
             return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
@@ -409,9 +422,12 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 2, **kwargs
         # only include rows that are found in the reference dataset
         if match_sequence_length is not None:
             _df = _df[_df['DAY'].isin(np.concatenate([match_dates_train, match_dates_eval]))]
-        eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
-        _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
-        _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
+        #eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
+        eval_year_range = np.unique(_df['SEASON_YEAR'])[-eval_years:]
+        # _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
+        # _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
+        _df_eval = _df[_df["SEASON_YEAR"].isin(eval_year_range)]
+        _df = _df[~(_df["SEASON_YEAR"].isin(eval_year_range))]
         return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
     
 if __name__=='__main__':

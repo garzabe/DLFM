@@ -7,9 +7,10 @@ from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest, 
 
 import matplotlib.pyplot as plt
 
-default_hparams = {DynamicANN: {'layer_dims': (6,6), 'epochs': 300, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1},
-                   RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1}, # [8, 15]
-                   LSTM: {'hidden_state_size': 8, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.1}, # [8, 15]
+default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 400, 'lr': 0.001, 'weight_decay': 0.01},
+                   DynamicANN: {'layer_dims': (6,6), 'epochs': 300, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01},
+                   RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
+                   LSTM: {'hidden_state_size': 8, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
                    xLSTM: {'epochs': 500, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.0},
                    XGBoost: {'lr': 0.5, 'n_estimators': 10000},
                    RandomForest: {'n_estimators': 10000}}
@@ -190,18 +191,18 @@ me2_input_column_set = [
         'TS_1_3_1',
         #'V_SIGMA',
         'P',
-        'WD',
-        'WS',
+        #'WD',
+        #'WS',
         # TA 1 1 1 has no data until 2007
         'TA_1_1_3',
         # Trying out some new variables
         'G_2_1_1',
         'H',
-        'LW_IN',
-        'SW_IN',
-        'H2O',
-        'CO2',
-        'LE'
+        #'LW_IN',
+        #'SW_IN',
+        #'H2O',
+        #'CO2',
+        #'LE'
 ]
 
 me6_input_column_set = [
@@ -262,9 +263,10 @@ def main():
 
 
     ### Preliminary hparam tuning to find strictly better parameters
-    #train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=7)
+    #train_test_eval(LSTM, site, me2_input_column_set, hidden_state_size=8, lr=[0.001], batch_size=[64], num_layers=[2], epochs=[1000], weight_decay=0.01, sequence_length=7, season='winter')
     #train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=14)
 
+    train_test_eval(FirstANN, site, me2_input_column_set, epochs=600, sequence_length=31, flatten=True, weight_decay=0.1)#, season='summer')
 
 
     # new batch of hparam tuning - will take a long time to run
@@ -297,7 +299,7 @@ def main():
 
     ### Testing scripts - these usually evoke any bugs present in the project
     #test_sklearn()
-    test_tte()
+    #test_tte()
     # Ensuring that these models are actually converging to some optimum by checking the training curves
     #train_test_eval(DynamicANN, site, me2_input_column_set, epochs=2000, lr=0.001, layer_dims=(6,6), stat_interval=14)
     #train_test_eval(LSTM, site, me2_input_column_set, epochs=[2000, 10000], lr=[0.01, 0.001], weight_decay=[0, 0.1, 0.01], sequence_length=7, match_sequence_length=14, num_folds=3)

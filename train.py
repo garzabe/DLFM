@@ -194,7 +194,7 @@ def train_kfold(num_folds : int,
 
 def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomForest], site, input_columns, **kwargs) -> tuple[list[NEPModel | XGBoost | RandomForest], dict[str, None], list[dict[str, None]]]:
     model_name = model_class.__name__
-
+ 
     # Accepted kwargs
     num_folds = kwargs.get('num_folds', 5)
     num_models = kwargs.get('num_models', 1)

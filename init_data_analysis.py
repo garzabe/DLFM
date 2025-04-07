@@ -106,28 +106,28 @@ def main():
     # plt.ylabel("Number of gaps in the dataset")
     # plt.show()
 
-    print("1 period")
-    print(me2_data['TIME'].diff())
-    print("2 periods")
-    print(me2_data['TIME'].diff(periods=2))
-    print(me2_data['TIME'].diff(periods=2) == pd.Timedelta(minutes=60))
+    # print("1 period")
+    # print(me2_data['TIME'].diff())
+    # print("2 periods")
+    # print(me2_data['TIME'].diff(periods=2))
+    # print(me2_data['TIME'].diff(periods=2) == pd.Timedelta(minutes=60))
 
 
-    # continuous sequences
-    continuous_sequences = []
-    for half_hours in range(2, 2000):
-        _me2 = me2_data.iloc[half_hours:]
-        start_end_diff = _me2['TIME'].diff(periods=half_hours)
-        continuous = start_end_diff == pd.Timedelta(minutes=30*half_hours)
-        continuous_sequences.append(len(_me2[continuous]))
-    plt.clf()
-    plt.plot(list(range(2, 2000)), continuous_sequences)
-    plt.xlabel('Length of continuous sequence (half-hours)')
-    plt.ylabel('Number of continuous sequences')
-    plt.axvline(x=48 , label = '1 day')
-    plt.axvline(x=336, label='1 week')
-    plt.axvline(x=1344, label='1 month')
-    plt.show()
+    # # continuous sequences
+    # continuous_sequences = []
+    # for half_hours in range(2, 2000):
+    #     _me2 = me2_data.iloc[half_hours:]
+    #     start_end_diff = _me2['TIME'].diff(periods=half_hours)
+    #     continuous = start_end_diff == pd.Timedelta(minutes=30*half_hours)
+    #     continuous_sequences.append(len(_me2[continuous]))
+    # plt.clf()
+    # plt.plot(list(range(2, 2000)), continuous_sequences)
+    # plt.xlabel('Length of continuous sequence (half-hours)')
+    # plt.ylabel('Number of continuous sequences')
+    # plt.axvline(x=48 , label = '1 day')
+    # plt.axvline(x=336, label='1 week')
+    # plt.axvline(x=1344, label='1 month')
+    # plt.show()
         
 
 
@@ -165,7 +165,8 @@ def main():
 
     #plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
     #plot_daily_avg(me2_data, 'SWC_3_7_1', 'Me-2', daytime_only=True)
-    plot_daily_avg(me2_data, 'NEE_PI', 'Me-2')
+    plot_annual_avg(me2_data, 'P', 'Me-2')
+    plot_annual_avg(me2_data, 'D_SNOW', 'Me-2')
 
 
 
@@ -305,8 +306,8 @@ def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, day
 def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, precision : str = 'DAY'):
     # get the matching columns
     # filter out nighttime data
-    df = df[df['PPFD_IN'] > 4.0]
-    df = df[df['USTAR'] > 0.2]
+    #df = df[df['PPFD_IN'] > 4.0]
+    #df = df[df['USTAR'] > 0.2]
     df.dropna(subset='NEE_PI_F', inplace=True)
     _col = col_category
     if col_category=='NEP':
@@ -321,7 +322,7 @@ def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, pre
     else:
         df['DAY'] = df['DATETIME'].apply(lambda dt: f"{dt.month:02}{dt.day:02}")
     print(df.head())
-    df = df[df['PPFD_IN'] < 1.0]
+    #df = df[df['PPFD_IN'] < 1.0]
    
     # simply strip the year, hours and minutes from each timestamp
     df_col = df[[precision, *cols, 'NEE_PI_F']]
@@ -339,15 +340,15 @@ def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, pre
     X = means[precision].to_list()
     
     ax2 = ax1.twinx()
-    y = means['NEE_PI_F']['mean'].to_list()
-    q25 = quart25['NEE_PI_F'].to_list()
-    q75 = quart75['NEE_PI_F'].to_list()
-    y = np.array([-_y for _y in y])
-    q25 = np.array([-_q for _q in q25])
-    q75 = np.array([-_q for _q in q75])
-    ax2.plot(X,y,label='NEP', alpha=0.5, color='tab:blue')
-    ax2.fill_between(X, q25, q75, alpha=0.1, color='tab:blue')
-    ax2.set_ylabel(column_labels['NEP']['y_label'])
+    # y = means['NEE_PI_F']['mean'].to_list()
+    # q25 = quart25['NEE_PI_F'].to_list()
+    # q75 = quart75['NEE_PI_F'].to_list()
+    # y = np.array([-_y for _y in y])
+    # q25 = np.array([-_q for _q in q25])
+    # q75 = np.array([-_q for _q in q75])
+    # ax2.plot(X,y,label='NEP', alpha=0.5, color='tab:blue')
+    # ax2.fill_between(X, q25, q75, alpha=0.1, color='tab:blue')
+    # ax2.set_ylabel(column_labels['NEP']['y_label'])
     
     for col in cols:
         y = means[col]['mean'].to_list()
@@ -364,7 +365,7 @@ def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, pre
     else:
         ax1.set_xticks([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334])
     ax1.set_xticklabels(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
-    ax1.set_ylim((0, 0.8))
+    #ax1.set_ylim((0, 0.8))
     ax1.set_ylabel(column_labels['P']['y_label'])
     ax1.grid(color='0.95')
     
