@@ -255,7 +255,7 @@ def main():
     #train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=14)
 
     #train_test_eval(FirstANN, site, me2_input_column_set, epochs=300)#600, sequence_length=31, flatten=True, weight_decay=0.1)#, season='summer')
-    train_test_eval(LSTM, site, me2_input_column_set, sequence_length=7)
+    train_test_eval(LSTM, site, me2_input_column_set, sequence_length=7, peak_NEE=False)
 
     # new batch of hparam tuning - will take a long time to run
     # ~300 combos per model, 5 mins per combo, 12 models = ~12 days to run in total

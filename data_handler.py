@@ -167,6 +167,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     interpolate = kwargs.get('interpolate', True)
 
     time_series = sequence_length is not None
+    peak_NEE = kwargs.get('peak_NEE', True)
 
     # in the case we are using match_sequence_length, first get the set of prediction dates for the target dataset
     match_dates_train = None
@@ -212,8 +213,10 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
 
     df_X = df.drop(columns=['NEE'])
     df_y = df[['DATETIME', 'DAY', 'NEE']]
-    # only use morning hours 9-11 for ~peak NEE calculation
-    df_y = df_y[(df_y['DATETIME'].dt.hour >= 9) & (df_y['DATETIME'].dt.hour <= 11)].drop(columns=['DATETIME'])
+    # only use morning hours 9-11 for ~peak NEE calculation?
+    if peak_NEE:
+        df_y = df_y[(df_y['DATETIME'].dt.hour >= 9) & (df_y['DATETIME'].dt.hour <= 11)]
+    df_y = df_y.drop(columns=['DATETIME'])
     df_X = df_X.drop(columns=['DATETIME', 'TIMESTAMP_START'])
     #df = df.drop(columns=['DATETIME', 'TIMESTAMP_START'])
     
@@ -227,8 +230,9 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     # perfect recording is 48 per day
     # with ~9 hours of daylight, the max daylight rows is 18
     min_count =  9  #or 10 for full day, 3 for just the morning
+    min_NEE_count = 3 if peak_NEE else 9
     #print(df_count.head())
-    nee_below_threshold = (df_y_avg['NEE'] == np.nan) | (df_y_count['NEE'] < 3)
+    nee_below_threshold = (df_y_avg['NEE'] == np.nan) | (df_y_count['NEE'] < min_NEE_count)
     df_y_avg.loc[nee_below_threshold, 'NEE'] = np.nan
 
     # drop rows in df_X with NaN values
@@ -237,7 +241,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     df_X_count = df_X_count[X_is_na]
     # input data averaged over full day needs to have at least 9 points
     # target data averaged over 9-11AM needs to have at least 3 points
-    min_count_filter = (df_X_count.drop(columns=['DAY']) >= 9).all(axis=1)
+    min_count_filter = (df_X_count.drop(columns=['DAY']) >= min_count).all(axis=1)
     df_X_avg = df_X_avg[min_count_filter]
     df_X_y = df_X_avg.merge(df_y_avg, on='DAY', how='left')
     # remove any NEE values with ustar below threshold
@@ -495,7 +499,12 @@ if __name__=='__main__':
         #'CO2', # many gaps although does not correlate with other input vars
         #'LE' # correlates strongly with PPFD_IN (0.8)
     ]
-    for col in candidate_input_cols:
-        if col in ['PPFD_IN', 'D_SNOW']:
-            continue
-        get_dataset_size_diff(Site.Me2, candidate_input_cols, col, sequence_length=7)
+    # for col in candidate_input_cols:
+    #     if col in ['PPFD_IN', 'D_SNOW']:
+    #         continue
+    #     get_dataset_size_diff(Site.Me2, candidate_input_cols, col, sequence_length=7)
+    train, test = prepare_data(Site.Me2, candidate_input_cols, sequence_length=7, peak_NEE=True)
+    peak_size = len(train) + len(test)
+    train, test = prepare_data(Site.Me2, candidate_input_cols, sequence_length=7, peak_NEE=False)
+    avg_size = len(train) + len(test)
+    print(f"Size for peak nee {peak_size}, size for average nee {avg_size}")
