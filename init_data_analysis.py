@@ -56,33 +56,43 @@ def main():
     me6_data.replace(-9999, np.nan, inplace=True)
     me2_input_column_set = [
         'D_SNOW',
+        'SWC_4_1_1',
+        'RH',
+        'PPFD_IN',
+        'TS_1_3_1',
+        'P',
+        'WD',
+        'WS',
+        'TA_1_1_3',
+    ]
+    candidate_columns = [
+        'D_SNOW',
+        'SWC_4_1_1',
+        'RH',
+        'PPFD_IN',
+        'TS_1_3_1',
+        'V_SIGMA',
+        'P',
+        'WD',
+        'WS',
+        'TA_1_1_3',
         # no data until 2006
         'SWC_1_7_1',
         # 2 7 1 has really spotty data
         #'SWC_2_7_1',
-        #'SWC_3_7_1',
-        'SWC_4_1_1',
         'SWC_1_2_1',
-        'RH',
-        'NETRAD',
-        'PPFD_IN',
-        'TS_1_3_1',
-        #'V_SIGMA',
-        'P',
-        'WD',
-        'WS',
+        'NETRAD', # correlates very strongly with PPFD_IN
         # TA 1 1 1 has no data until 2007
-        'TA_1_1_3',
         # Trying out some new variables
-        'G_2_1_1',
+        'G_2_1_1', # correlates relatively strongly with PPFD_IN (0.78)
         'H',
-        'LW_IN',
-        'SW_IN',
-        'H2O',
-        'CO2',
-        'LE'
+        'LW_IN', # trying out without
+        'SW_IN', # correlates very strongly with PPFD_IN
+        'H2O', # many gaps
+        'CO2', # many gaps although does not correlate with other input vars
+        'LE' # correlates strongly with PPFD_IN (0.8)
     ]
-    me2_data = me2_data[['TIMESTAMP_START', *me2_input_column_set, 'NEE_PI_F']]
+    me2_data = me2_data[['TIMESTAMP_START', *candidate_columns, 'NEE_PI_F', 'GPP_PI_F']]
     print(f"Before preprocessing, there are {len(me2_data)} datapoints")
 
     # drop rows with NA that are NOT the target variable
@@ -90,6 +100,16 @@ def main():
     print(f"After dropping nans, there are {len(me2_data)} datapoints remaining")
 
     me2_data['TIME'] = pd.to_datetime(me2_data['TIMESTAMP_START'], format="%Y%m%d%H%M")
+
+    me2_inputs = me2_data[[*me2_input_column_set]]
+    me2_inputs = (me2_inputs - me2_inputs.mean())/me2_inputs.std()
+
+    me2_cov = me2_inputs.cov()
+    print(me2_cov)
+    import seaborn as sns
+    cmap = sns.diverging_palette(250, 10, as_cmap=True)
+    sns.heatmap(me2_cov, cmap=cmap, annot=True)
+    plt.show()
 
     #me2_data['TIME_DIFF'] = me2_data['TIME'].diff()
     # drop the first element since it cannot have a time gap
@@ -163,15 +183,15 @@ def main():
     ]
 
 
-    #plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
+    plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
     #plot_daily_avg(me2_data, 'SWC_3_7_1', 'Me-2', daytime_only=True)
-    plot_annual_avg(me2_data, 'P', 'Me-2')
-    plot_annual_avg(me2_data, 'D_SNOW', 'Me-2')
-
+    #plot_annual_avg(me2_data, 'NEE_PI_F', 'Me-2')
+    #plot_daily_avg(me2_data, 'GPP', 'Me-2')
+    
 
 
     #plot_daily_avg(me2_data, 'PPFD_IN', 'Me-2 Daytime', daytime_only=True)
-    #plot_daily_avg(me2_data, 'GPP', 'Me-2')
+    #plot_day_averages(me2_data, 'NEE_PI_F')
     #plot_daily_avg(me2_data, 'RECO', 'Me-2')
     #for column in me6_input_column_set:
     #    plot_annual_avg(me6_data, column, 'Me-6')
@@ -247,6 +267,7 @@ def main():
     plot_continuous_sequences(me2_data)
     plot_continuous_sequences(me6_data)"""
 
+
 def plot_continuous_sequences(df: pd.DataFrame):
     # find the time intervals with no gaps
     df_nogaps = get_continuous_sequences(df.index.to_list())
@@ -301,6 +322,25 @@ def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, day
     ax1.set_ylabel(col_ylabel)
     plt.suptitle(f'{title_prefix} - {col_title} - Daily Averages')
     ax1.legend()
+    plt.show()
+
+def plot_day_averages(df: pd.DataFrame, col: str):
+    df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
+    df['TIME'] = df['DATETIME'].apply(lambda dt: 100*dt.hour + dt.minute*(100/60))
+    means = df.groupby('TIME').aggregate(['mean']).reset_index()
+    variances = df.groupby('TIME').aggregate(['var']).reset_index()
+    quart25 = df.groupby("TIME").quantile(0.25).reset_index()
+    quart75 = df.groupby("TIME").quantile(0.75).reset_index()
+    print(quart25)
+
+
+    plt.clf()
+    plt.title(f"{col} Average Day")
+    plt.plot(means['TIME'].to_list(), means[col]['mean'].to_list())
+    plt.fill_between(means['TIME'].to_list(), quart25[col].to_list(), quart75[col].to_list(), alpha=0.1)
+    plt.xticks([i*100 for i in range(0, 24)],
+               [f"{i:02d}:00" for i in range(0, 24)])
+    plt.ylabel(col)
     plt.show()
 
 def plot_annual_avg(df: pd.DataFrame, col_category: str, title_prefix : str, precision : str = 'DAY'):

@@ -13,13 +13,13 @@ from sklearn.metrics import mean_squared_error
 # train_test_eval uses this similarly, to determine how to build the history table
 
 MODEL_HYPERPARAMETERS : dict[str, dict[str, int | tuple[int] | Callable | None]] = {
-    'XGBoost' : {'lr' : 0.5, 'n_estimators' : 100},
-    'RandomForest' : {'n_estimators' : 100},
+    'XGBoost' : {'lr' : 0.01, 'n_estimators' : 1000, 'sequence_length': None, 'stat_interval': None},
+    'RandomForest' : {'n_estimators' : 100, 'sequence_length': None, 'stat_interval': None},
     'FirstANN' : {'epochs' : 300, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'stat_interval' : None, 'sequence_length' : None, 'weight_decay': 0.0, 'momentum': 0.0},
     'DynamicANN' : {'layer_dims' : (6,6), 'epochs' : 300, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'stat_interval' : None, 'sequence_length' : None, 'weight_decay': 0.0, 'momentum': 0.0},
-    'RNN' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 2000, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
-    'LSTM' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 2000, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
-    'xLSTM' : {'epochs' : 500, 'batch_size' : 64, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0}
+    'RNN' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 800, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
+    'LSTM' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 800, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
+    'xLSTM' : {'epochs' : 1000, 'batch_size' : 64, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0}
 }
 
 # each class should have an __init__
@@ -262,8 +262,7 @@ class xLSTM(NEPModel):
 
 #-------------------------
 class XGBoost():
-    def __init__(self, lr=None, n_estimators=None, epochs=100, **kwargs):
-        print(f"Epochs {epochs}")
+    def __init__(self, lr=None, n_estimators=None, **kwargs):
         model_kwargs = {'eval_metric': mean_squared_error}#, 'early_stopping_rounds': epochs}
         if lr is not None:
             model_kwargs['learning_rate'] = lr
@@ -272,7 +271,7 @@ class XGBoost():
         self.model : XGBRegressor = XGBRegressor(**model_kwargs)
 
     def fit(self, X, y):
-        return self.model.fit(X, y, eval_set=[(X, y)], verbose=True)
+        return self.model.fit(X, y, eval_set=[(X, y)], verbose=False)
 
     def predict(self, X):
         return self.model.predict(X)
@@ -290,7 +289,7 @@ class RandomForest():
         if n_estimators is not None:
             model_kwargs['n_estimators'] = n_estimators
         # TODO: process kwargs for randomforest relevant kwargs
-        self.model : RandomForestRegressor = RandomForestRegressor(verbose=1, **model_kwargs)
+        self.model : RandomForestRegressor = RandomForestRegressor(verbose=0, **model_kwargs)
 
     def fit(self, X, y):
         return self.model.fit(X, y)

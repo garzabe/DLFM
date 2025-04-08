@@ -411,8 +411,8 @@ def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset,
 
         # xticks should fall on first day of each week, for a total of 4 months*4 weeks= 16 weeks?
         plt.xticks([datetime.datetime(year=year, month=m, day=d) for m in _month_nums for d in month_ticks[m]])
-        plt.yticks(list(range(-8, 2, 2)))
-        plt.ylim((-10, 2))
+        plt.yticks(list(range(-18, 2, 2)))
+        plt.ylim((-18, 2))
         plt.gcf().autofmt_xdate()
         plt.ylabel("NEE")
         plt.legend()

@@ -173,8 +173,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     match_dates_eval = None
     if match_sequence_length is not None and sequence_length != match_sequence_length:
         print("Generating the reference dataset for our actual dataset to match")
-        match_dataset_train, match_dataset_eval = prepare_data(site_name, input_columns, eval_years=eval_years, time_series=True, sequence_length=match_sequence_length,
-                                     ustar=ustar, season=season)
+        match_dataset_train, match_dataset_eval = prepare_data(site_name, input_columns, eval_years=eval_years, sequence_length=match_sequence_length,
+                                     ustar=ustar, flatten=flatten, season=season, interpolate=interpolate)
         match_dates_train = match_dataset_train.get_dates()
         match_dates_eval = match_dataset_eval.get_dates()
 
@@ -203,23 +203,43 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
 
     # group into daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
+
+    # look at only 9am-11am
+    #df = df[(df['DATETIME'].dt.hour >= 9) & (df['DATETIME'].dt.hour <= 11)]
+
+
     df['DAY'] = pd.to_datetime(df['DATETIME'].apply(lambda dt: f"{dt.year:04}{dt.month:02}{dt.day:02}"))
-    df = df.drop(columns=['DATETIME', 'TIMESTAMP_START'])
+
+    df_X = df.drop(columns=['NEE'])
+    df_y = df[['DATETIME', 'DAY', 'NEE']]
+    # only use morning hours 9-11 for ~peak NEE calculation
+    df_y = df_y[(df_y['DATETIME'].dt.hour >= 9) & (df_y['DATETIME'].dt.hour <= 11)].drop(columns=['DATETIME'])
+    df_X = df_X.drop(columns=['DATETIME', 'TIMESTAMP_START'])
+    #df = df.drop(columns=['DATETIME', 'TIMESTAMP_START'])
     
     # the means are the important values, but count helps us identify low-data days
-    df_avg = df.groupby('DAY').aggregate('mean').reset_index()
-    df_count = df.groupby('DAY').aggregate('count').reset_index()
+    df_X_avg = df_X.groupby('DAY').aggregate('mean').reset_index()
+    df_X_count = df_X.groupby('DAY').aggregate('count').reset_index()
+    df_y_avg = df_y.groupby('DAY').aggregate('mean').reset_index()
+    df_y_count = df_y.groupby('DAY').aggregate('count').reset_index()
 
     # now only include the days where all column counts are above 20??
     # perfect recording is 48 per day
     # with ~9 hours of daylight, the max daylight rows is 18
-    _nrows = len(df_avg)
-    min_count = 9
+    min_count =  9  #or 10 for full day, 3 for just the morning
     #print(df_count.head())
-    nee_below_threshold = (df_avg['NEE'] == np.nan) | (df_count['NEE'] < min_count)
-    df_avg.loc[nee_below_threshold, 'NEE'] = np.nan
-    min_count_filter = df_count.drop(columns=['DAY', 'NEE']) >= min_count
-    df_X_y = df_avg[min_count_filter.all(axis=1)]
+    nee_below_threshold = (df_y_avg['NEE'] == np.nan) | (df_y_count['NEE'] < 3)
+    df_y_avg.loc[nee_below_threshold, 'NEE'] = np.nan
+
+    # drop rows in df_X with NaN values
+    X_is_na = df_X_avg.notna().all(axis=1)
+    df_X_avg = df_X_avg[X_is_na]
+    df_X_count = df_X_count[X_is_na]
+    # input data averaged over full day needs to have at least 9 points
+    # target data averaged over 9-11AM needs to have at least 3 points
+    min_count_filter = (df_X_count.drop(columns=['DAY']) >= 9).all(axis=1)
+    df_X_avg = df_X_avg[min_count_filter]
+    df_X_y = df_X_avg.merge(df_y_avg, on='DAY', how='left')
     # remove any NEE values with ustar below threshold
     if ustar=='na':
         df_X_y.loc[df_X_y['USTAR'] <= 0.2, 'NEE'] = np.nan
@@ -267,7 +287,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     
     # assign seasons and season years
     # default to winter, and change datapoints to summer as needed
-    season_df = df_X_y[['DAY', 'D_SNOW', 'P']].assign(SEASON='winter')
+    season_df = df_X_y[['DAY', 'D_SNOW']].assign(SEASON='winter')
     season_df.loc[:, 'YEAR'] = season_df['DAY'].dt.year
     # safe to iterate on years with <20 years of data
     years = season_df['YEAR'].unique()
@@ -308,7 +328,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
         # assign each row after the start of this season-year to the current year
         # later years will get updated in later iterations
         season_df.loc[last_snow_idx+1:, 'SEASON_YEAR'] = year
-    df_X_y['SEASON_YEAR'] = season_df['SEASON_YEAR']
+    #df_X_y.loc[:, 'SEASON_YEAR'] = season_df['SEASON_YEAR'].copy()
+    df_X_y = df_X_y.assign(SEASON_YEAR=season_df['SEASON_YEAR'])
 
 
     # if training on a specific season, filter out other season
@@ -398,6 +419,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
             print("The evaluation set does not have enough data to compute an R-squared metric")
             return None, None
         if flatten:
+            print("Flattening")
             train_size = len(X_train)
             eval_size = len(X_eval)
             input_size = len(X_train[0][0])
@@ -430,10 +452,50 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
         _df = _df[~(_df["SEASON_YEAR"].isin(eval_year_range))]
         return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
     
+
+def get_dataset_size_diff(site_name, input_columns: list[str], col:str, sequence_length=None):
+    if col not in input_columns:
+        print("Error: column not in the input set")
+        return
+    train, test = prepare_data(site_name, input_columns, interpolate=False, sequence_length=sequence_length)
+    size_with = len(train) + len(test)
+
+    cols_without = [c for c in input_columns if c != col]
+
+    train, test = prepare_data(site_name, cols_without, interpolate=False, sequence_length=sequence_length)
+    size_without = len(train) + len(test)
+
+    print(f"Removing {col} increases the dataset by {size_without - size_with} ({size_with} -> {size_without})")
+
 if __name__=='__main__':
-    from model_analysis import me2_input_column_set
-    train, test = prepare_data(Site.Me2, me2_input_column_set)
-    print(len(train), len(test))
-    for sl in [1,7,14,31,90,180]:
-        tr, te = prepare_data(Site.Me2, me2_input_column_set, sequence_length=sl)
-        print(f"sl: {len(tr) + len(te)}")
+    candidate_input_cols = [
+        'D_SNOW',
+        'SWC_4_1_1',
+        'RH',
+        'PPFD_IN',
+        'TS_1_3_1',
+        'P',
+        'WD',
+        'WS',
+        'TA_1_1_3',
+        #'V_SIGMA',
+        # no data until 2006
+        #'SWC_1_7_1',
+        # 2 7 1 has really spotty data
+        #'SWC_2_7_1',
+        #'SWC_1_2_1',
+        #'NETRAD', # correlates very strongly with PPFD_IN
+        # TA 1 1 1 has no data until 2007
+        # Trying out some new variables
+        #'G_2_1_1', # correlates relatively strongly with PPFD_IN (0.78)
+        #'H',
+        #'LW_IN', # trying out without
+        #'SW_IN', # correlates very strongly with PPFD_IN
+        #'H2O', # many gaps
+        #'CO2', # many gaps although does not correlate with other input vars
+        #'LE' # correlates strongly with PPFD_IN (0.8)
+    ]
+    for col in candidate_input_cols:
+        if col in ['PPFD_IN', 'D_SNOW']:
+            continue
+        get_dataset_size_diff(Site.Me2, candidate_input_cols, col, sequence_length=7)

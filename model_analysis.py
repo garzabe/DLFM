@@ -12,7 +12,7 @@ default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 400, 'lr': 0.001, 'wei
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
                    LSTM: {'hidden_state_size': 8, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
                    xLSTM: {'epochs': 500, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.0},
-                   XGBoost: {'lr': 0.5, 'n_estimators': 10000},
+                   XGBoost: {'lr': 0.01, 'n_estimators': 1000},
                    RandomForest: {'n_estimators': 10000}}
 
 def test_tte():
@@ -77,8 +77,9 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
     mse_t_results = []
     sequence_args = default_hparams[model_class]
     sequence_args.update(kwargs)
-    sequence_args['time_series'] = True
+    #sequence_args['time_series'] = True
     sequence_args['match_sequence_length'] = max_sequence_length
+    sequence_args['flatten'] = flatten
 
     if flatten and model_class.__name__ in ['RNN', 'LSTM']:
         print("Argument error: model class cannot be an RNN and take flattened time series data")
@@ -88,8 +89,8 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
     if use_stat_interval:
         sequence_args['time_series'] = False
     
-    sequence_lengths = list(range(1, max_sequence_length+1, 3))
-    for sl in range(1, max_sequence_length+1, 3):
+    sequence_lengths = list(range(1, max_sequence_length+1))
+    for sl in range(1, max_sequence_length+1):
         sl_arg = {'stat_interval' if use_stat_interval else 'sequence_length': sl}
         r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, **sl_arg, **sequence_args)
         r2_results.append(r2)
@@ -178,31 +179,14 @@ def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=No
     
 me2_input_column_set = [
         'D_SNOW',
-        # no data until 2006
-        'SWC_1_7_1',
-        # 2 7 1 has really spotty data
-        #'SWC_2_7_1',
-        #'SWC_3_7_1',
         'SWC_4_1_1',
-        'SWC_1_2_1',
         'RH',
-        'NETRAD',
         'PPFD_IN',
         'TS_1_3_1',
-        #'V_SIGMA',
         'P',
-        #'WD',
-        #'WS',
-        # TA 1 1 1 has no data until 2007
+        'WD',
+        'WS',
         'TA_1_1_3',
-        # Trying out some new variables
-        'G_2_1_1',
-        'H',
-        #'LW_IN',
-        #'SW_IN',
-        #'H2O',
-        #'CO2',
-        #'LE'
 ]
 
 me6_input_column_set = [
@@ -261,13 +245,17 @@ def main():
     #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.00, momentum=0.1)
     #train_test_eval(xLSTM, site, me2_input_column_set, sequence_length=7)
 
+    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=7, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=7)
+    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=14, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=7)
+    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=14, flatten=True)
+
 
     ### Preliminary hparam tuning to find strictly better parameters
-    #train_test_eval(LSTM, site, me2_input_column_set, hidden_state_size=8, lr=[0.001], batch_size=[64], num_layers=[2], epochs=[1000], weight_decay=0.01, sequence_length=7, season='winter')
+    #rain_test_eval(LSTM, site, me2_input_column_set, hidden_state_size=8, lr=[0.001], batch_size=[64], num_layers=[2], epochs=[500], weight_decay=0.001, sequence_length=31)
     #train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=14)
 
-    train_test_eval(FirstANN, site, me2_input_column_set, epochs=600, sequence_length=31, flatten=True, weight_decay=0.1)#, season='summer')
-
+    #train_test_eval(FirstANN, site, me2_input_column_set, epochs=300)#600, sequence_length=31, flatten=True, weight_decay=0.1)#, season='summer')
+    train_test_eval(LSTM, site, me2_input_column_set, sequence_length=7)
 
     # new batch of hparam tuning - will take a long time to run
     # ~300 combos per model, 5 mins per combo, 12 models = ~12 days to run in total
