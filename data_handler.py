@@ -57,7 +57,7 @@ class AmeriFLUXLinearDataset(Dataset):
             print(f"Warning: delta_year ({delta_year}) is greater than the number of years in the dataset ({len(self.years)})")
             return None, None
         year = self.years[-1-delta_year]
-        test_year_match = self.df['DAY'].dt.year == year
+        test_year_match = self.df['SEASON_YEAR'] == year
         return self.df[~test_year_match].index.to_list(), self.df[test_year_match].index.to_list()
     
     def get_dates(self, idx_range : list[int]=None):
