@@ -167,7 +167,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     interpolate = kwargs.get('interpolate', True)
 
     time_series = sequence_length is not None
-    peak_NEE = kwargs.get('peak_NEE', True)
+    peak_NEE = kwargs.get('peak_NEE', False)
 
     # in the case we are using match_sequence_length, first get the set of prediction dates for the target dataset
     match_dates_train = None
@@ -334,7 +334,6 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
         season_df.loc[last_snow_idx+1:, 'SEASON_YEAR'] = year
     #df_X_y.loc[:, 'SEASON_YEAR'] = season_df['SEASON_YEAR'].copy()
     df_X_y = df_X_y.assign(SEASON_YEAR=season_df['SEASON_YEAR'])
-
 
     # if training on a specific season, filter out other season
     if season is not None:

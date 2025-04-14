@@ -51,6 +51,7 @@ def main():
     me6_filepath = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_17-5/AMF_US-Me6_BASE_HH_17-5.csv'
     me2_data = pd.read_csv(me2_filepath, header=2)
     me6_data = pd.read_csv(me6_filepath, header=2)
+    print(me6_data.columns)
 
     me2_data.replace(-9999, np.nan, inplace=True)
     me6_data.replace(-9999, np.nan, inplace=True)
@@ -183,7 +184,7 @@ def main():
     ]
 
 
-    plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
+    #plot_daily_avg(me2_data, 'SWC_1_7_1', 'Me-2', daytime_only=True)
     #plot_daily_avg(me2_data, 'SWC_3_7_1', 'Me-2', daytime_only=True)
     #plot_annual_avg(me2_data, 'NEE_PI_F', 'Me-2')
     #plot_daily_avg(me2_data, 'GPP', 'Me-2')
@@ -191,7 +192,7 @@ def main():
 
 
     #plot_daily_avg(me2_data, 'PPFD_IN', 'Me-2 Daytime', daytime_only=True)
-    #plot_day_averages(me2_data, 'NEE_PI_F')
+    plot_day_averages(me2_data, 'NEE_PI_F')
     #plot_daily_avg(me2_data, 'RECO', 'Me-2')
     #for column in me6_input_column_set:
     #    plot_annual_avg(me6_data, column, 'Me-6')

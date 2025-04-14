@@ -1,14 +1,15 @@
-from torch import nn, optim
+from torch import nn, optim, autograd
+from torch.utils.data import DataLoader
 import numpy as np
 
-from data_handler import  Site, get_site_vars
-from train import train_test_eval, fmt_date_string #, feature_pruning
+from data_handler import  Site, prepare_data
+from train import train_test_eval, fmt_date_string, train_hparam #, feature_pruning
 from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest, xLSTM
 
 import matplotlib.pyplot as plt
 
-default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 400, 'lr': 0.001, 'weight_decay': 0.01},
-                   DynamicANN: {'layer_dims': (6,6), 'epochs': 300, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01},
+default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01},
+                   DynamicANN: {'layer_dims': [(10,6), (10,4)], 'epochs': [400, 800], 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01},
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
                    LSTM: {'hidden_state_size': 8, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
                    xLSTM: {'epochs': 500, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.0},
@@ -70,11 +71,12 @@ def search_longest_sequence(input_columns, ustar=None):
     print(f"The longest sequence found was {longest_sequence_low}")
     return longest_sequence_low
 
-def plot_sequence_importance(site, input_columns, model_class, max_sequence_length=90, flatten=False, **kwargs):
+def plot_sequence_importance(site, input_columns, model_class, num_models=5, max_sequence_length=90, flatten=False, **kwargs):
     r2_results = []
     mse_results = []
     r2_t_results = []
     mse_t_results = []
+    results = []
     sequence_args = default_hparams[model_class]
     sequence_args.update(kwargs)
     #sequence_args['time_series'] = True
@@ -92,12 +94,40 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
     sequence_lengths = list(range(1, max_sequence_length+1))
     for sl in range(1, max_sequence_length+1):
         sl_arg = {'stat_interval' if use_stat_interval else 'sequence_length': sl}
-        r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, **sl_arg, **sequence_args)
+        iter = []
+        for _ in range(num_models):
+            r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, **sl_arg, **sequence_args)
+            iter.append([r2, mse, r2_t, mse_t])
+        iter = np.array(iter)
+        #print("Iteration")
+        #print(iter.shape)
+        #print(iter)
+        means = iter.sum(axis=0)/num_models
+        #print("means")
+        #print(means.shape)
+        #print(means)
+        quartile25 = np.percentile(iter, 25, axis=0)
+        quartile75 = np.percentile(iter, 75, axis=0)
+        # axis 0: timestep; axis 1: variable
+        var_metrics = np.array([means, quartile25, quartile75])
+        #print("variable metrics (not transposed)")
+        #print(var_metrics.shape)
+        #print(var_metrics)
+        #var_metrics = var_metrics.transpose()
+        #print("variable metrics (transposed)")
+        #print(var_metrics.shape)
+        #print(var_metrics)
+        results.append(var_metrics)
         r2_results.append(r2)
         r2_t_results.append(r2_t)
         mse_results.append(mse)
         mse_t_results.append(mse_t)
 
+        #results = np.array(results)
+
+        # axis 0: variable; axis 1: timesteps
+        #results = results.transpose(axes=[0,1])
+    """
     r2_results.sort()
     r2_t_results.sort()
     mse_results.sort()
@@ -110,17 +140,21 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
     mse_75 = np.percentile(mse_results, 75)
     mse_t_25 = np.percentile(mse_t_results, 25)
     mse_t_75 = np.percentile(mse_t_results, 75)
+    """
 
-    r2_results
+    #r2_results
+    results = np.array(results)
+    #print(results.shape)
+    #print(results)
 
     #plt.rcParams['text.usetex'] = True
     dt_str = fmt_date_string()
     # R-squared on both evaluation and training sets
     plt.clf()
-    plt.plot(sequence_lengths, r2_results, label='Mean '+r'R^2'+' on evaluation set')
-    plt.fill_between(sequence_lengths, r2_25, r2_75, alpha=0.1)
-    plt.plot(sequence_lengths, r2_t_results, label='Mean '+r'R^2'+' on training set')
-    plt.fill_between(sequence_lengths, r2_t_25, r2_t_75, alpha=0.1)
+    plt.plot(sequence_lengths, results[:,0,0], label='Mean '+r'R^2'+' on evaluation set', color='g')
+    plt.fill_between(sequence_lengths, results[:,1,0], results[:,2,0], alpha=0.1, color='b')
+    plt.plot(sequence_lengths, results[:,0,2], label='Mean '+r'R^2'+' on training set', color='b')
+    plt.fill_between(sequence_lengths, results[:,1,2], results[:,2,2], alpha=0.1, color='g')
     plt.xlabel('Input Sequence Length (Days)')
     plt.ylabel('R^2')
     plt.legend()
@@ -130,10 +164,10 @@ def plot_sequence_importance(site, input_columns, model_class, max_sequence_leng
 
     # MSE on both evaluation and training sets
     plt.clf()
-    plt.plot(sequence_lengths, mse_results, label='Mean MSE on evaluation set')
-    plt.fill_between(sequence_lengths, mse_25, mse_75, alpha=0.1)
-    plt.plot(sequence_lengths, mse_t_results, label='Mean MSE on training set')
-    plt.fill_between(sequence_lengths, mse_t_25, mse_t_75, alpha=0.1)
+    plt.plot(sequence_lengths, results[:,0,1], label='Mean MSE on evaluation set', color='g')
+    plt.fill_between(sequence_lengths, results[:,1,1], results[:,2,1], alpha=0.1, color='g')
+    plt.plot(sequence_lengths, results[:,0,3], label='Mean MSE on training set', color='b')
+    plt.fill_between(sequence_lengths, results[:,1,3], results[:,2,3], alpha=0.1, color='b')
     plt.xlabel('Input Sequence Length (Days)')
     
     plt.ylabel('MSE')
@@ -177,6 +211,36 @@ def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=No
                     weight_decay=weight_decay,
                     time_series=True)
     
+def sensitivity_analysis(site, input_columns, model_class, var_name, timestep=None, **model_kwargs):
+    # train a model
+    model, best, history = train_hparam(model_class, site, input_columns, **model_kwargs)
+    device = 'cuda' # TODO
+
+    # given the var_name input (and potentially the time step), calculate the partial derivatives
+    # of the model function wrt each input-output
+
+    # TODO: how to get the partial using torch.autograd
+    # we need to prepare data and go as far as preparing the dataloader here to have the exact tensors
+    # that are tied to the outputs
+    # is grads batched allows for batch gradient calculation
+    train, _ = prepare_data(site, input_columns, **model_kwargs)
+    # one single batch
+    dataloader = DataLoader(train, batch_size=1)
+    model.eval()
+    partials = []
+    for _, (X, _) in enumerate(dataloader):
+            pred = model(X.to(device))
+            # TODO: isolate the value in X that corresponds with var_name:timestep
+            partial = autograd.grad(pred, X, is_grads_batched=False)
+            partials.append(partial)
+
+    # TODO: analyze the partials: average, distribution, etc.
+    mean_partial = sum(partials)/len(partials)
+    print(f"The average partial derivative for this variable is {mean_partial}")
+
+    return mean_partial
+    
+    
 me2_input_column_set = [
         'D_SNOW',
         'SWC_4_1_1',
@@ -205,131 +269,24 @@ me6_input_column_set = [
 
 def main():
     site = Site.Me2
-    # me2_input_column_set = [
-    #     'D_SNOW',
-    #     # no data until 2006
-    #     'SWC_1_7_1',
-    #     # 2 7 1 has really spotty data
-    #     #'SWC_2_7_1',
-    #     #'SWC_3_7_1',
-    #     'SWC_1_2_1',
-    #     'RH',
-    #     'NETRAD',
-    #     'PPFD_IN',
-    #     'TS_1_3_1',
-    #     #'V_SIGMA',
-    #     'P',
-    #     'WD',
-    #     'WS',
-    #     # TA 1 1 1 has no data until 2007
-    #     'TA_1_1_3',
-    # ]
-
-    # me6_input_column_set = [
-    #     'D_SNOW',
-    #     'SWC_1_5_1',
-    #     'SWC_1_2_1',
-    #     'RH',
-    #     'NETRAD',
-    #     'PPFD_IN',
-    #     'TS_1_5_1',
-    #     'P',
-    #     'WD',
-    #     'WS',
-    #     'TA_1_1_2'
-    # ]
     MAX_SEQUENCE_LENGTH=14
 
-    #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.Adam, lr=0.001)
-    #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.001)
-    #train_test_eval(LSTM, site, me2_input_column_set, optimizer_class=optim.SGD, weight_decay=0.00, momentum=0.1)
-    #train_test_eval(xLSTM, site, me2_input_column_set, sequence_length=7)
+    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=7, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
+    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=31, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
+    #train_test_eval(XGBoost, site, me2_input_column_set, stat_interval=7,  lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
+    #train_test_eval(XGBoost, site, me2_input_column_set, stat_interval=31,  lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
 
-    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=7, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=7)
-    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=14, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=7)
-    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=14, flatten=True)
+    #train_test_eval(RandomForest, site, me2_input_column_set, sequence_length=7, flatten=True,  n_estimators=[1000, 10000], num_folds=3)
+    #train_test_eval(RandomForest, site, me2_input_column_set, sequence_length=31, flatten=True,  n_estimators=[1000, 10000], num_folds=3)
+    #train_test_eval(RandomForest, site, me2_input_column_set, stat_interval=7,  n_estimators=[1000, 10000], num_folds=3)
+    #train_test_eval(RandomForest, site, me2_input_column_set, stat_interval=31,  n_estimators=[1000, 10000], num_folds=3)
+    
+    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=5, flatten=True)
+    plot_sequence_importance(site, me2_input_column_set, XGBoost, num_models=5, max_sequence_length=31, flatten=False)
+    
+    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, flatten=True)
+    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, flatten=False)
 
-
-    ### Preliminary hparam tuning to find strictly better parameters
-    #rain_test_eval(LSTM, site, me2_input_column_set, hidden_state_size=8, lr=[0.001], batch_size=[64], num_layers=[2], epochs=[500], weight_decay=0.001, sequence_length=31)
-    #train_test_eval(LSTM, site, me2_input_column_set, lr=[0.01, 0.001], batch_size=[32,64], num_layers=[1,2], epochs=[500, 2000], sequence_length=14)
-
-    #train_test_eval(FirstANN, site, me2_input_column_set, epochs=300)#600, sequence_length=31, flatten=True, weight_decay=0.1)#, season='summer')
-    train_test_eval(LSTM, site, me2_input_column_set, sequence_length=7, peak_NEE=False)
-
-    # new batch of hparam tuning - will take a long time to run
-    # ~300 combos per model, 5 mins per combo, 12 models = ~12 days to run in total
-    # check back in 3 days
-    # 3 day sequences
-    # best_rnn_search(site, me2_input_column_set, 3, model_class=LSTM, weight_decay=[0.0, 0.01, 0.001], momentum=[0.0, 0.1, 0.2])
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=3)
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=3, flatten=True)
-
-    # check back in 3 days
-    # 7 day sequences
-    # best_rnn_search(site, me2_input_column_set, 7, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=7)
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=7, flatten=True)
-
-    # # check back in 3 days
-    # # 14 day sequences
-    # best_rnn_search(site, me2_input_column_set, 14, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=14)
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=14, flatten=True)
-
-    # # check back in 3 days
-    # # 31 day sequences
-    # best_rnn_search(site, me2_input_column_set, 31, model_class=LSTM, weight_decay=[0.1, 0.01, 0.0], momentum=[0.0, 0.1, 0.2])
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=31)
-    # best_vanilla_network_search(site, me2_input_column_set, sequence_length=31, flatten=True)
-
-
-
-    ### Testing scripts - these usually evoke any bugs present in the project
-    #test_sklearn()
-    #test_tte()
-    # Ensuring that these models are actually converging to some optimum by checking the training curves
-    #train_test_eval(DynamicANN, site, me2_input_column_set, epochs=2000, lr=0.001, layer_dims=(6,6), stat_interval=14)
-    #train_test_eval(LSTM, site, me2_input_column_set, epochs=[2000, 10000], lr=[0.01, 0.001], weight_decay=[0, 0.1, 0.01], sequence_length=7, match_sequence_length=14, num_folds=3)
-    #plot_sequence_importance(site, me2_input_column_set, LSTM, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10, num_folds=1)
-
-    #plot_sequence_importance(site, me2_input_column_set, RNN, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10, num_folds=2)
-
-    #plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1)
-    #plot_sequence_importance(site, me2_input_column_set, RandomForest, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1, flatten=False)
-
-    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1)
-    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=1, num_folds=1, flatten=False)
-
-    #plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10)
-    #plot_sequence_importance(site, me2_input_column_set, DynamicANN, max_sequence_length=MAX_SEQUENCE_LENGTH, num_models=10, flatten=False)
-
-    ### Example usage for the best_***_search functions
-    #best_vanilla_network_search(site, me2_input_column_set, stat_interval=[None, 7, 14, 30])
-    #best_rnn_search(site, me2_input_column_set, model_class=LSTM)
-    #best_rnn_search(site, me2_input_column_set, model_class=RNN)
-
-    ### RNN, LSTM, DynamicANN (stat interval and flatenned) with 7,14,31,90 days and 0.0, 0.01, 0.05 dropout
-    # for sl in [7,14,31,90,180]:
-    #     for d in [0.0, 0.01, 0.05]:
-    #         best_rnn_search(Site.Me2, me2_input_column_set, RNN, sequence_length=sl, dropout=d)
-    #         best_rnn_search(Site.Me2, me2_input_column_set, LSTM, sequence_length=sl, dropout=d)
-    #     best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=False)
-    #     best_vanilla_network_search(Site.Me2, me2_input_column_set, sequence_length=sl, flatten=True)
-    # train_test_eval(DynamicANN,
-    #                 site=Site.Me2,
-    #                 input_columns=me2_input_column_set,
-    #                 num_folds=2,
-    #                 epochs=50, 
-    #                 layer_dims=(6,4),
-    #                 lr=[1e-2],
-    #                 batch_size=64,
-    #                 #sequence_length=31,
-    #                 #hidden_state_size=8,
-    #                 #num_layers=1,
-    #                 #dropout=0.0,
-    #                 #time_series=True,
-    #                 num_models=10)
 
 
                 
