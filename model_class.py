@@ -19,7 +19,7 @@ MODEL_HYPERPARAMETERS : dict[str, dict[str, int | tuple[int] | Callable | None]]
     'DynamicANN' : {'layer_dims' : (6,6), 'epochs' : 300, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'stat_interval' : None, 'sequence_length' : None, 'weight_decay': 0.0, 'momentum': 0.0},
     'RNN' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 800, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
     'LSTM' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 800, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
-    'xLSTM' : {'epochs' : 1000, 'batch_size' : 64, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0}
+    'xLSTM' : {'epochs' : 500, 'batch_size' : 64, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0}
 }
 
 # each class should have an __init__

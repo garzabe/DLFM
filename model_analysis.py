@@ -83,11 +83,11 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
     sequence_args['match_sequence_length'] = max_sequence_length
     sequence_args['flatten'] = flatten
 
-    if flatten and model_class.__name__ in ['RNN', 'LSTM']:
+    if flatten and model_class.__name__ in ['RNN', 'LSTM', 'xLSTM']:
         print("Argument error: model class cannot be an RNN and take flattened time series data")
         return
     
-    use_stat_interval = model_class.__name__ not in ['RNN', 'LSTM'] and not flatten
+    use_stat_interval = model_class.__name__ not in ['RNN', 'LSTM', 'xLSTM'] and not flatten
     if use_stat_interval:
         sequence_args['time_series'] = False
     
@@ -281,12 +281,12 @@ def main():
     #train_test_eval(RandomForest, site, me2_input_column_set, stat_interval=7,  n_estimators=[1000, 10000], num_folds=3)
     #train_test_eval(RandomForest, site, me2_input_column_set, stat_interval=31,  n_estimators=[1000, 10000], num_folds=3)
     
-    plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=5, flatten=True)
-    plot_sequence_importance(site, me2_input_column_set, XGBoost, num_models=5, max_sequence_length=31, flatten=False)
+    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=5, flatten=True)
+    #plot_sequence_importance(site, me2_input_column_set, XGBoost, num_models=5, max_sequence_length=31, flatten=False)
     
     #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, flatten=True)
     #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, flatten=False)
-
+    plot_sequence_importance(site, me2_input_column_set, xLSTM, max_sequence_length=31)
 
 
                 
