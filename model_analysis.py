@@ -152,9 +152,9 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
     # R-squared on both evaluation and training sets
     plt.clf()
     plt.plot(sequence_lengths, results[:,0,0], label='Mean '+r'R^2'+' on evaluation set', color='g')
-    plt.fill_between(sequence_lengths, results[:,1,0], results[:,2,0], alpha=0.1, color='b')
+    plt.fill_between(sequence_lengths, results[:,1,0], results[:,2,0], alpha=0.1, color='g')
     plt.plot(sequence_lengths, results[:,0,2], label='Mean '+r'R^2'+' on training set', color='b')
-    plt.fill_between(sequence_lengths, results[:,1,2], results[:,2,2], alpha=0.1, color='g')
+    plt.fill_between(sequence_lengths, results[:,1,2], results[:,2,2], alpha=0.1, color='b')
     plt.xlabel('Input Sequence Length (Days)')
     plt.ylabel('R^2')
     plt.legend()
