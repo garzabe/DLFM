@@ -100,8 +100,9 @@ def main():
         'TS_1_6_1',
         'TA_1_1_3'
     ]
-    me2_data = me2_data[['TIMESTAMP_START', *temp_vars, 'NEE_PI_F', 'GPP_PI_F']]
+    me2_data = me2_data[['TIMESTAMP_START', *me2_input_column_set, 'NEE_PI_F', 'GPP_PI_F']]
     print(f"Before preprocessing, there are {len(me2_data)} datapoints")
+    plot_daily_avg(me2_data, 'NEE', 'NEE')
 
     # drop rows with NA that are NOT the target variable
     me2_data.dropna(subset=me2_data.drop(columns=['NEE_PI_F']).columns, how='any', inplace=True)

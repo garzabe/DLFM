@@ -10,6 +10,49 @@ from train import train_test_eval, fmt_date_string, train_hparam #, feature_prun
 from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest, xLSTM
 
 import matplotlib.pyplot as plt
+column_labels = {'CO2': {'title':'Carbon Dioxide Content', 'y_label':'Mol fraction (umolCO2 mol-1)'},
+                'H20': {'title':'Water Content', 'y_label':'Mol fraction (mmolH2O mol-1)'},
+                'CH4': {'title':'Methane Content', 'y_label':'Mol fraction (nmolCH4 mol-1)'},
+                'FC': {'title':'Carbon Dioxide Flux', 'y_label':'Flux (umolCO2 m-2 s-1)'},
+                'SC': {'title':'Carbon Dioxide Storage Flux', 'y_label':'Flux (umolCO2 m-2 s-1)'},
+                'FCH4': {'title':'Methane Flux', 'y_label':'Flux (nmolCH4 m-2 s-1)'},
+                'SCH4': {'title':'Methane Storage Flux', 'y_label':'Flux (nmolCH4 m-2 s-1)'},
+                'G': {'title':'Soil Heat Flux', 'y_label':'Heat Flux (W m-2)'},
+                'H': {'title':'Sensible Heat Flux', 'y_label':'Heat Flux (W m-2)'},
+                'LE': {'title':'Latent Heat Flux', 'y_label':'Heat Flux (W m-2)'},
+                'SH': {'title':'Air Heat Storage', 'y_label':'Heat Flux (W m-2)'},
+                'SLE': {'title':'Latent Heat Storage Flux', 'y_label':'Heat Flux (W m-2)'},
+                'WD': {'title':'Wind Direction', 'y_label':'Direction (deg)'},
+                'WS': {'title':'Wind Speed', 'y_label':'Speed (m s-1)'},
+                'USTAR': {'title':'Friction Velocity', 'y_label':'Speed (m s-1)'},
+                'ZL': {'title':'Stability Param', 'y_label':''},
+                'PA': {'title':'Atmospheric Pressure', 'y_label':'Pressure (kPa)'},
+                'RH': {'title':'Relative Humidity', 'y_label':'Percent Humidity (%)'},
+                'TA': {'title':'Air Temperature', 'y_label':'Temperature (deg C)'},
+                'VPD': {'title':'Vapor Pressure Deficit', 'y_label':'Pressure (hPa)'},
+                'SWC': {'title':'Soil Water Content', 'y_label':'Percent Water Content (%)'},
+                'TS': {'title':'Soil Temperature', 'y_label':'Temperature (deg C)'},
+                'WTD': {'title':'Water Table Depth', 'y_label':'Depth (m)'},
+                'NETRAD': {'title':'Net Radiation', 'y_label':'Radiation (W m-2)'},
+                'PPFD_IN': {'title':'Incoming Photon Flux Density', 'y_label':'Flux Density (umolP m-2 s-1)'},
+                'PPFD_OUT': {'title':'Outgoing Photon Flux Density', 'y_label':'Flux Density (umolP m-2 s-1)'},
+                'SW_IN': {'title':'Incoming Shortwave Radiation', 'y_label':'Flux (W m-2)'},
+                'SW_OUT': {'title':'Outgoing Shortwave Radiation', 'y_label':'Flux (W m-2)'},
+                'LW_IN': {'title':'Incoming Longwave Radiation', 'y_label':'Flux (W m-2)'},
+                'LW_OUT': {'title':'Outgoing Longwave Radiation', 'y_label':'Flux (W m-2)'},
+                'P': {'title':'Precipitation', 'y_label':'Precipitation Height (mm)'},
+                'NEE': {'title':'Net Ecosystem Exchange', 'y_label':r'Flux Density ($\mu$mol $m^{-2} s^{-1}$)'},
+                'NEP': {'title':'Net Ecosystem Productivity', 'y_label':'NEP ($\mu$mol $m^{-2} s^{-1}$)'},
+                'RECO': {'title':'Ecosystem Respiration', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
+                'GPP': {'title':'Gross Primary Productivity', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
+                'D_SNOW': {'title': 'Snow Depth', 'y_label':'Snow Depth (in)'},
+                }
+
+def find_prefix(var_name : str):
+    for var_prefix in column_labels.keys():
+        if var_prefix in var_name:
+            return var_prefix
+    return var_name
 
 default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01},
                    DynamicANN: {'layer_dims': [(10,6)], 'epochs': [400], 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01, 'flatten': True},
@@ -102,58 +145,27 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
             r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, **sl_arg, **sequence_args)
             iter.append([r2, mse, r2_t, mse_t])
         iter = np.array(iter)
-        #print("Iteration")
-        #print(iter.shape)
-        #print(iter)
+
         means = iter.sum(axis=0)/num_models
-        #print("means")
-        #print(means.shape)
-        #print(means)
+
         for var, mean in zip(iter, means):
             st.t.interval(0.95, len(iter)-1, loc=mean, scale=st.sem(var))
         quartile25 = np.percentile(iter, 25, axis=0)
         quartile75 = np.percentile(iter, 75, axis=0)
         # axis 0: timestep; axis 1: variable
         var_metrics = np.array([means, quartile25, quartile75])
-        #print("variable metrics (not transposed)")
-        #print(var_metrics.shape)
-        #print(var_metrics)
-        #var_metrics = var_metrics.transpose()
-        #print("variable metrics (transposed)")
-        #print(var_metrics.shape)
-        #print(var_metrics)
+
         results.append(var_metrics)
         r2_results.append(r2)
         r2_t_results.append(r2_t)
         mse_results.append(mse)
         mse_t_results.append(mse_t)
 
-        #results = np.array(results)
-
-        # axis 0: variable; axis 1: timesteps
-        #results = results.transpose(axes=[0,1])
-    """
-    r2_results.sort()
-    r2_t_results.sort()
-    mse_results.sort()
-    mse_t_results.sort()
-    r2_25 = np.percentile(r2_results, 25)
-    r2_75 = np.percentile(r2_results, 75)
-    r2_t_25 = np.percentile(r2_t_results, 25)
-    r2_t_75 = np.percentile(r2_t_results, 75)
-    mse_25 = np.percentile(mse_results, 25)
-    mse_75 = np.percentile(mse_results, 75)
-    mse_t_25 = np.percentile(mse_t_results, 25)
-    mse_t_75 = np.percentile(mse_t_results, 75)
-    """
-
-    #r2_results
     results = np.array(results)
-    #print(results.shape)
-    #print(results)
 
-    #plt.rcParams['text.usetex'] = True
+
     dt_str = fmt_date_string()
+    
     # R-squared on both evaluation and training sets
     plt.clf()
     plt.plot(sequence_lengths, results[:,0,0], label='Mean '+r'R^2'+' on evaluation set', color='g')
@@ -216,7 +228,7 @@ def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=No
                     weight_decay=weight_decay,
                     time_series=True)
     
-def sensitivity_analysis(site, input_columns, model_class, var_names : list, timesteps=None, **model_kwargs):
+def variable_importance(site, input_columns, model_class, var_names : list[str], timesteps=None, **model_kwargs):
     # train a model
     models, best, history = train_hparam(model_class, site, input_columns, skip_eval=False, skip_curve=False, **model_kwargs)
     device = ("cuda" if cuda.is_available() else "cpu")
@@ -238,13 +250,15 @@ def sensitivity_analysis(site, input_columns, model_class, var_names : list, tim
     synthetic = False
     show_NEP = True
     # either show dates on the x-axis or show input values
-    show_dates = True
+    show_dates = False
+    # either show a scatterplot or shows stats on the partials
+    scatter = True
 
-    # TEST -------------------------------------------
     # evaluate partial derivatives between -2*sigma to 2*sigma
     # for xLSTM which considers the interplay between vars, this generated data might not be ideal
     # ZEROS EXCEPT
-    if synthetic:
+    # not used nor maintained in preference of real data
+    if False:
         test_values = [-2.0 + i*(4/100) for i in range(101)]
         test_inputs : dict[str, torch.Tensor] = {}
         if model_kwargs.get('sequence_length', None) is not None:
@@ -296,54 +310,77 @@ def sensitivity_analysis(site, input_columns, model_class, var_names : list, tim
             plt.legend()
             plt.show()
     
-    else:
-        partials = {}
-        inputs = {}
-        for var_name in var_names:
-            partials[var_name] = {}
-            inputs[var_name] = {}
-            for timestep in timesteps:
-                partials[var_name][timestep] = []
-                inputs[var_name][timestep] = []
+    partials = {}
+    inputs = {}
+    for var_name in var_names:
+        partials[var_name] = {}
+        inputs[var_name] = {}
+        for timestep in timesteps:
+            partials[var_name][timestep] = []
+            inputs[var_name][timestep] = []
 
-        vars_idx = [train.get_var_idx(var_name) for var_name in var_names]
-        for i, (X, _) in enumerate(dataloader):
-                # X has shape (batch_size, sequence_length, var)
-                X.requires_grad_()
-                date = dates[i]
-                for model in models:
-                    pred : Tensor = model(X.to(device))
-                    #x = X[:, -timestep-1, train.get_var_idx(var_name):train.get_var_idx(var_name)+1]
-                    # TODO: isolate the value in X that corresponds with var_name:timestep
-                    jacobian = autograd.grad(pred[0,0], X)[0]
-                    # TODO: collect jacobians from each model and calculate mean, variance
-                # get the partial we are interested in
-                for var_name, var_idx in zip(var_names, vars_idx):
-                    for timestep in timesteps:
-                        partial = jacobian[0,-timestep-1, var_idx]
-                        # TODO: if we are plotting dates on the x-axis
-                        if show_dates:
-                            # reduce precision by removing year
-                            input = date.timetuple().tm_yday
-                            inputs[var_name][timestep].append(input)
-                        else:
-                            # if we are plotting variable values on the x-axis
-                            input = X[0,-timestep-1, var_idx]
-                            inputs[var_name][timestep].append(input.detach().numpy())
-                        
-                        partials[var_name][timestep].append((-1 if show_NEP else 1)*partial.detach().numpy())
-                        
-        
+    vars_idx = [train.get_var_idx(var_name) for var_name in var_names]
+    for i, (X, _) in enumerate(dataloader):
+            # X has shape (batch_size, sequence_length, var)
+            X.requires_grad_()
+            date = dates[i]
+            for model in models:
+                pred : Tensor = model(X.to(device))
+                #x = X[:, -timestep-1, train.get_var_idx(var_name):train.get_var_idx(var_name)+1]
+                # TODO: isolate the value in X that corresponds with var_name:timestep
+                jacobian = autograd.grad(pred[0,0], X)[0]
+                # TODO: collect jacobians from each model and calculate mean, variance
+            # get the partial we are interested in
+            for var_name, var_idx in zip(var_names, vars_idx):
+                for timestep in timesteps:
+                    partial = jacobian[0,-timestep-1, var_idx]
+                    # TODO: if we are plotting dates on the x-axis
+                    if show_dates:
+                        # reduce precision by removing year
+                        input = date.timetuple().tm_yday
+                        inputs[var_name][timestep].append(input)
+                    else:
+                        # if we are plotting variable values on the x-axis
+                        input = X[0,-timestep-1, var_idx]
+                        inputs[var_name][timestep].append(input.detach().numpy())
+                    
+                    partials[var_name][timestep].append((-1 if show_NEP else 1)*partial.detach().numpy())
+
+    # collect statistics on partials
+    mean_partials = {}
+    var_partials = {}
+    sigma_partials = {}
+    for var_name in var_names:
+        mean_partials[var_name] = []
+        var_partials[var_name] = []
+        sigma_partials[var_name] = []
+        for timestep in timesteps:
+            mean_partial = sum(partials[var_name][timestep])/len(partials[var_name][timestep])
+            # mean absolute partial derivative
+            # handles odd funcs that would average to 0 and not recognize importance
+            mean_abs_partial = sum([abs(partial) for partial in partials[var_name][timestep]])/len(partials[var_name][timestep])
+            #print(f"The average absolute partial derivative for {var_name} at timestep {timestep} is {mean_abs_partial}")
+            mean_partials[var_name].append(mean_abs_partial)
+
+            var_partial = np.var(partials[var_name][timestep])
+            #print(f"The variance of the partial derivative for {var_name} at timestep {timestep} is {var_partial}")
+            var_partials[var_name].append(var_partial)   
+
+            sigma_partial = np.std(partials[var_name][timestep])
+            sigma_partials[var_name].append(sigma_partial)
+
+    if scatter:           
         # For each variable, make a plot
         # On each plot, there are len(timestep) partial curves for each timestep evaluated
         for var_name in var_names:
+            var_prefix = find_prefix(var_name)
             plt.clf()
             plt.title(f"Partial Derivatives of predicted {'NEP' if show_NEP else 'NEE'} with respect to {var_name}")
-            plt.xlabel("Input Value")
+            plt.xlabel(column_labels[var_prefix]['y_label'])
             plt.ylabel("Partial Derivative")
             if show_dates:
                 plt.xticks([1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335],
-                           ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+                            ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
             plt.ylim(-2,2)
             #plt.xticks(test_values)
             for timestep in timesteps:
@@ -369,26 +406,18 @@ def sensitivity_analysis(site, input_columns, model_class, var_names : list, tim
                 plt.scatter(_x, _y, s=0.2)
                 plt.plot(_x, f(_x), label=f"{timestep} days before prediction")
             plt.legend()
-            #plt.show()
-
-    # TODO: analyze the partials: average, distribution, etc.
-    mean_partials = {}
-    var_partials = {}
-    for var_name in var_names:
-        mean_partials[var_name] = []
-        var_partials[var_name] = []
-        for timestep in timesteps:
-            mean_partial = sum(partials[var_name][timestep])/len(partials[var_name][timestep])
-            # mean absolute partial derivative
-            # handles odd funcs that would average to 0 and not recognize importance
-            mean_abs_partial = sum([abs(partial) for partial in partials[var_name][timestep]])/len(partials[var_name][timestep])
-            #print(f"The average absolute partial derivative for {var_name} at timestep {timestep} is {mean_abs_partial}")
-            mean_partials[var_name].append(mean_abs_partial)
-
-            var_partial = np.var(partials[var_name][timestep])
-            #print(f"The variance of the partial derivative for {var_name} at timestep {timestep} is {var_partial}")
-            var_partials[var_name].append(var_partial)
-
+            plt.show()
+    else:
+        plt.clf()
+        for var_name in var_partials.keys():
+            var_prefix = find_prefix(var_name)
+            plt.plot(range(0,max(timesteps)+1), var_partials[var_name], label=column_labels[var_prefix]['title'])
+        #plt.yscale('log')
+        plt.xlabel('Days before prediction')
+        plt.ylabel(f'Variance of Partial Derivatives of NEP Prediction')
+        plt.xticks(list(range(0, max(timesteps)+1)))
+        plt.legend()
+        plt.show()
 
     return var_partials
     
@@ -421,37 +450,12 @@ me6_input_column_set = [
 
 def main():
     site = Site.Me2
-    MAX_SEQUENCE_LENGTH=7
+    MAX_SEQUENCE_LENGTH=4
 
-    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=7, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
-    #train_test_eval(XGBoost, site, me2_input_column_set, sequence_length=31, flatten=True, lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
-    #train_test_eval(XGBoost, site, me2_input_column_set, stat_interval=7,  lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
-    #train_test_eval(XGBoost, site, me2_input_column_set, stat_interval=31,  lr=[0.001, 0.01,0.1], n_estimators=[1000, 10000, 100000], num_folds=3)
-
-    #train_test_eval(RandomForest, site, me2_input_column_set, sequence_length=7, flatten=True,  n_estimators=[1000, 10000], num_folds=3)
-    #train_test_eval(RandomForest, site, me2_input_column_set, sequence_length=31, flatten=True,  n_estimators=[1000, 10000], num_folds=3)
-    #train_test_eval(RandomForest, site, me2_input_column_set, stat_interval=7,  n_estimators=[1000, 10000], num_folds=3)
-    #train_test_eval(RandomForest, site, me2_input_column_set, stat_interval=31,  n_estimators=[1000, 10000], num_folds=3)
-    
-    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, num_models=5, flatten=True)
-    #plot_sequence_importance(site, me2_input_column_set, XGBoost, num_models=5, max_sequence_length=31, flatten=False)
-    
-    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, flatten=True)
-    #plot_sequence_importance(site, me2_input_column_set, XGBoost, max_sequence_length=31, flatten=False)
-    #plot_sequence_importance(site, me2_input_column_set, xLSTM, max_sequence_length=31)
-    #train_test_eval(LSTM, site, me2_input_column_set, lr=0.001, epochs=1000, sequence_length=180, hidden_state_size=8, num_layers=3)
     model_class = LSTM
     hparams : dict[str, str | int] = default_hparams[model_class]
     hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
-    var_partials = sensitivity_analysis(site, me2_input_column_set, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), **hparams)
-    plt.clf()
-    for var_name in var_partials.keys():
-        plt.plot(range(0,MAX_SEQUENCE_LENGTH), var_partials[var_name], label=var_name)
-    plt.yscale('log')
-    plt.xlabel('Days before prediction')
-    plt.ylabel('Variance of Partial Derivative')
-    plt.legend()
-    plt.show()
+    variable_importance(site, me2_input_column_set, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), **hparams)
                 
 if __name__=="__main__":
     main()

@@ -19,7 +19,7 @@ class AmeriFLUXDataset(Dataset, ABC):
         pass
 
     @abstractmethod
-    def get_dates(self, idx_range : list[int]) -> list[datetime.datetime]:
+    def get_dates(self, idx_range : list[int] = None) -> list[datetime.datetime]:
         pass
 
     @abstractmethod
@@ -159,26 +159,33 @@ def get_site_vars(site : Site):
 def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
 
     ### Arguments for building time series data
+
     # Rolling window statistics for use with DynamicANN and other non-sequence models
     stat_interval = kwargs.get('stat_interval', None)
+
     # Sequence length (in days) of the time series inputs - can range from 1 - ~200 days
     sequence_length = kwargs.get('sequence_length', None)
+
     # Due to limited data, longer sequence length arguments result in significantly smaller datasets
     # Force smaller sequence length datasets to match datapoints to a longer sequence length
     # Useful for comparing models across sequence lengths
     match_sequence_length = kwargs.get('match_sequence_length', None)
+
     # Flatten time series data - useful for non-sequence models
     flatten = kwargs.get('flatten', False)
 
     # defines the method of handling low ustar entries: current possible values are: drop, na
     ustar = kwargs.get('ustar', 'na') 
+
     # Filter through only one season of data
     # Options are:
     # summer (last snow of winter to first snow of winter in same calendar year)
     # winter (first snow to last snow)
     season = kwargs.get('season', None)
+
     # Include the target variable from the previous day
     yesterday_NEE = kwargs.get('yesterday_NEE', False)
+
     # Interpolate 1-day gaps in weather or climate data
     interpolate = kwargs.get('interpolate', True)
 
@@ -197,12 +204,13 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
 
     df = get_data(site_name)
     
-    # reduce the columns to our desired set
+    # reduce the columns to our desired feature set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
     if input_columns is not None:
         df = df[['TIMESTAMP_START', *input_columns, 'USTAR', target_col]]
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
+
     # get rolling window average and variance
     if stat_interval is not None:
         for col in input_columns:
@@ -220,21 +228,17 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
 
     # group into daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
-
-    # look at only 9am-11am
-    #df = df[(df['DATETIME'].dt.hour >= 9) & (df['DATETIME'].dt.hour <= 11)]
-
-
     df['DAY'] = pd.to_datetime(df['DATETIME'].apply(lambda dt: f"{dt.year:04}{dt.month:02}{dt.day:02}"))
 
     df_X = df.drop(columns=['NEE'])
     df_y = df[['DATETIME', 'DAY', 'NEE']]
-    # only use morning hours 9-11 for ~peak NEE calculation?
+
+    # only use morning hours 9-11 for ~peak NEE calculation
     if peak_NEE:
         df_y = df_y[(df_y['DATETIME'].dt.hour >= 9) & (df_y['DATETIME'].dt.hour <= 11)]
+
     df_y = df_y.drop(columns=['DATETIME'])
     df_X = df_X.drop(columns=['DATETIME', 'TIMESTAMP_START'])
-    #df = df.drop(columns=['DATETIME', 'TIMESTAMP_START'])
     
     # the means are the important values, but count helps us identify low-data days
     df_X_avg = df_X.groupby('DAY').aggregate('mean').reset_index()
@@ -247,62 +251,53 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     # with ~9 hours of daylight, the max daylight rows is 18
     min_count =  9  #or 10 for full day, 3 for just the morning
     min_NEE_count = 3 if peak_NEE else 9
-    #print(df_count.head())
+
+    # A mask for missing/low-sample NEE days
     nee_below_threshold = (df_y_avg['NEE'] == np.nan) | (df_y_count['NEE'] < min_NEE_count)
+
+    # Replace missing/low-sample NEE days with NaN
     df_y_avg.loc[nee_below_threshold, 'NEE'] = np.nan
 
     # drop rows in df_X with NaN values
     X_is_na = df_X_avg.notna().all(axis=1)
     df_X_avg = df_X_avg[X_is_na]
     df_X_count = df_X_count[X_is_na]
-    # input data averaged over full day needs to have at least 9 points
-    # target data averaged over 9-11AM needs to have at least 3 points
+
+    # Mask for low-sample days
     min_count_filter = (df_X_count.drop(columns=['DAY']) >= min_count).all(axis=1)
     df_X_avg = df_X_avg[min_count_filter]
     df_X_y = df_X_avg.merge(df_y_avg, on='DAY', how='left')
-    # remove any NEE values with ustar below threshold
+
+    # remove any NEE values with ustar below threshold if doing replace rather than drop
     if ustar=='na':
         df_X_y.loc[df_X_y['USTAR'] <= 0.2, 'NEE'] = np.nan
+
+    # Too many high-gap features can result in empty datasets after pre-processing
     if len(df_X_y) == 0:
         print("No data after filtering")
         return None, None
 
-    
-    
-    # df_X_y["YEAR"] = df_X_y['DAY'].dt.year
-    # annual_counts = df_X_y.groupby('YEAR').aggregate('count')
-    # #print(annual_counts.head(20))
-    # df_X_y.drop(columns=['YEAR'], inplace=True)
-
     if interpolate:
         date_diffs = pd.DataFrame(df_X_y['DAY'])
         date_diffs['TIMEDIFF'] = date_diffs['DAY'].diff()
+
         # Day | timediff between Day and previous row Day
         single_day_gaps = (date_diffs['TIMEDIFF'] == pd.Timedelta(days=2))
+
         # insert the single days between single-day gaps and interpolate values (except NEE)
         prev_days = pd.DataFrame(columns=df_X_y.columns)
-        #prev_days_count = pd.DataFrame(columns=df_co.columns)
+        
         # now we have all missing single-gap days in the form of the df_avg dataframe
         prev_days['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
-        #prev_days_count['DAY'] = date_diffs[single_day_gaps]['DAY'] - pd.Timedelta(days=1)
-        #prev_days_count.fillna(1)
         
         # interpolate the input data
         df_interp = pd.concat([df_X_y, prev_days]).reset_index().sort_values(by='DAY')
+
         # remember where the gaps are to remove NEE after interpolate
         gap_filled = df_interp.isna().any(axis=1)
-        #print(df_interp[(df_interp['DAY'].dt.year==2006) & (df_interp['DAY'].dt.month==11)].head(30))
         df_interp.interpolate(limit=1, inplace=True)
         df_interp.loc[gap_filled, 'NEE'] = np.nan
-        #print(df_interp[(df_interp['DAY'].dt.year==2006) & (df_interp['DAY'].dt.month==11)].head(30))
         df_X_y = df_interp.drop(columns=['index'])
-        #print(df_X_y.columns)
-
-    #print(df_X_y.head())
-    # df_X_y["YEAR"] = df_X_y['DAY'].dt.year
-    # annual_counts = df_X_y.groupby('YEAR').aggregate('count')
-    # #print(annual_counts.head(20))
-    # df_X_y.drop(columns=['YEAR'], inplace=True)
 
     
     # assign seasons and season years
@@ -325,8 +320,6 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
         aug_dec_snow = aug_dec_df.loc[aug_dec_df['D_SNOW'] > 0]
         last_snow_idx = -1
         first_snow_idx = -1
-        # if len(jan_june_snow) == 0 and len(aug_dec_snow) == 0:
-        #     print(f"No snow data for the year {year}")
         if len(jan_june_df) == 0 or len(jan_june_snow) == 0:
             # if there is no snow data for the first half of the year (or no data at all)
             # -> have the last snow index be the index of the first entry of aug_dec_df (assume it starts in summer)
@@ -348,20 +341,13 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
         # assign each row after the start of this season-year to the current year
         # later years will get updated in later iterations
         season_df.loc[last_snow_idx+1:, 'SEASON_YEAR'] = year
-    #df_X_y.loc[:, 'SEASON_YEAR'] = season_df['SEASON_YEAR'].copy()
+    
     df_X_y = df_X_y.assign(SEASON_YEAR=season_df['SEASON_YEAR'])
 
     # if training on a specific season, filter out other season
     if season is not None:
         df_X_y = df_X_y[season_df['SEASON'] == season]
-        #years = df_X_y['SEASON_YEAR'].unique()
-        #import matplotlib.pyplot as plt
-        #for i in range(len(years)):
-        #    _plot = df_X_y[df_X_y['SEASON_YEAR']==years[i]]
-        #    plt.clf()
-        #    plt.plot(_plot['DAY'], _plot['NEE'])
-        #    plt.title(f'season year {years[i]}')
-        #    plt.show()
+
         
     # normalize all remaining data
     # add these columns back at the end
@@ -393,12 +379,11 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
                 continue
 
             df_seq = _df.iloc[i:i+sequence_length]
+
             # if the final day NEE is NaN, skip this iteration
             if pd.isna(df_seq['NEE']).iloc[-1]:
                 continue
 
-            # use season year 
-            #year = df_seq['DAY'].dt.year.iloc[-1]
             year = df_seq['SEASON_YEAR'].iloc[-1]
 
             date = df_seq['DAY'].iloc[-1]
@@ -464,18 +449,21 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     else:
         # if we are not generating time series data, we do not want any nans to remain in the dataset
         _df = _df.dropna()
+
         # only include rows that are found in the reference dataset
         if match_sequence_length is not None:
             _df = _df[_df['DAY'].isin(np.concatenate([match_dates_train, match_dates_eval]))]
-        #eval_year_range = np.unique(_df['DAY'].dt.year)[-eval_years:]
+
         eval_year_range = np.unique(_df['SEASON_YEAR'])[-eval_years:]
-        # _df_eval = _df[_df["DAY"].dt.year.isin(eval_year_range)]
-        # _df = _df[~(_df["DAY"].dt.year.isin(eval_year_range))]
+
         _df_eval = _df[_df["SEASON_YEAR"].isin(eval_year_range)]
         _df = _df[~(_df["SEASON_YEAR"].isin(eval_year_range))]
         return AmeriFLUXLinearDataset(_df), AmeriFLUXLinearDataset(_df_eval)
     
 
+# Determines the difference in dataset size with and without the given col
+# Useful for determining a feature set, as some variables have a lot of gaps that reduce
+# the dataset size by as much as ~500 datapoints
 def get_dataset_size_diff(site_name, input_columns: list[str], col:str, sequence_length=None):
     if col not in input_columns:
         print("Error: column not in the input set")
@@ -489,39 +477,3 @@ def get_dataset_size_diff(site_name, input_columns: list[str], col:str, sequence
     size_without = len(train) + len(test)
 
     print(f"Removing {col} increases the dataset by {size_without - size_with} ({size_with} -> {size_without})")
-
-if __name__=='__main__':
-    candidate_input_cols = [
-        'D_SNOW',
-        'SWC_4_1_1',
-        'RH',
-        'PPFD_IN',
-        #'TS_1_4_1',
-        'P',
-        'WD',
-        'WS',
-        'TA_1_1_3',
-        #'V_SIGMA',
-        # no data until 2006
-        #'SWC_1_7_1',
-        # 2 7 1 has really spotty data
-        #'SWC_2_7_1',
-        #'SWC_1_2_1',
-        #'NETRAD', # correlates very strongly with PPFD_IN
-        # TA 1 1 1 has no data until 2007
-        # Trying out some new variables
-        #'G_2_1_1', # correlates relatively strongly with PPFD_IN (0.78)
-        #'H',
-        #'LW_IN', # trying out without
-        #'SW_IN', # correlates very strongly with PPFD_IN
-        #'H2O', # many gaps
-        #'CO2', # many gaps although does not correlate with other input vars
-        #'LE' # correlates strongly with PPFD_IN (0.8)
-    ]
-    for ts_var in ['TS_1_3_1', 'TS_1_4_1', 'TS_1_5_1', 'TS_1_6_1']:
-        get_dataset_size_diff(Site.Me2, [*candidate_input_cols, ts_var], ts_var, sequence_length=7)
-    # for col in candidate_input_cols:
-    #     if col in ['PPFD_IN', 'D_SNOW']:
-    #         continue
-    #     get_dataset_size_diff(Site.Me2, candidate_input_cols, col, sequence_length=7)
-
