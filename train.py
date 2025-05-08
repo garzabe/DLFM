@@ -206,6 +206,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
     model_hparams = MODEL_HYPERPARAMETERS[model_name]
     
     skip_eval = kwargs.get('skip_eval', False)
+    skip_curve = kwargs.get('skip_curve', False)
     flatten = kwargs.get('flatten', False)
 
     time_series = True if model_name in ['RNN', 'LSTM'] or 'sequence_length' in kwargs.keys() else False
@@ -328,7 +329,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest
             eval_loader = DataLoader(eval_data, batch_size=64)
             optimizer = optimizer_class(model.parameters(), lr=best['lr'], weight_decay=best['weight_decay'], momentum=best['momentum'])
-            final_model_history = train_test(train_loader, eval_loader, model, best['epochs'], loss_fn, optimizer, device, context='Best Model')
+            final_model_history = train_test(train_loader, eval_loader, model, best['epochs'], loss_fn, optimizer, device, context='Best Model', skip_curve=skip_curve)
         models.append(model)
 
 
@@ -516,6 +517,7 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
     num_folds = kwargs.get('num_folds', 5)
     #time_series = kwargs.get('time_series', False)
     skip_eval = kwargs.get('skip_eval', False)
+    skip_curve = kwargs.get('skip_curve', False)
     model_name = model_class.__name__
     sklearn_model = model_name in ['XGBoost', 'RandomForest']
     time_series = True if model_name in ['LSTM', 'RNN'] or 'sequence_length' in kwargs.keys() else False

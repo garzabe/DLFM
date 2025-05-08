@@ -35,7 +35,7 @@ class AmeriFLUXDataset(Dataset, ABC):
         pass
 
 class AmeriFLUXLinearDataset(Dataset):
-    def __init__(self, df_X_y : pd.DataFrame):
+    def __init__(self, df_X_y : pd.DataFrame, means = None, stds = None):
         # hold onto the original dataframe
         self.df = df_X_y.reset_index(drop=True)
 
@@ -43,9 +43,12 @@ class AmeriFLUXLinearDataset(Dataset):
         #self.years = self.df['DAY'].dt.year.unique()
         self.years = self.df['SEASON_YEAR'].unique()
         self.years.sort()
+        self.vars = self.df.drop(columns=['DAY', 'SEASON_YEAR', 'NEE']).columns.to_list()
 
         self.inputs : pd.DataFrame = self.df.drop(columns=['DAY', 'SEASON_YEAR', 'NEE'])
         self.labels : pd.Series = self.df['NEE']
+        self.means = means
+        self.stds = stds
 
     def __len__(self, ):
         return len(self.labels)
@@ -64,7 +67,12 @@ class AmeriFLUXLinearDataset(Dataset):
         if idx_range is not None:
             return self.df['DAY'].iloc[idx_range].to_list()
         else:
-            return self.df['DAY'].to_list()        
+            return self.df['DAY'].to_list()   
+        
+    def get_var_idx(self, var):
+        if var not in self.vars:
+            raise ValueError(f"Error: the variable {var} is not present")
+        return self.vars.index(var)
 
     def get_num_years(self):
         return len(self.years)
@@ -82,12 +90,15 @@ class AmeriFLUXLinearDataset(Dataset):
         return self.labels.to_numpy()
     
 class AmeriFLUXSequenceDataset(Dataset):
-    def __init__(self, X, y, dates, years_idx):
+    def __init__(self, X, y, dates, years_idx, vars, means = None, stds = None):
         self.inputs = X
         self.labels = y
         self.dates = dates
         self.years_idx = years_idx
         self.years = np.unique(self.years_idx)
+        self.vars = vars
+        self.means = means
+        self.stds = stds
 
     def __len__(self):
         return len(self.labels)
@@ -114,6 +125,11 @@ class AmeriFLUXSequenceDataset(Dataset):
             return [self.dates[i] for i in idx_range]
         else:
             return self.dates
+        
+    def get_var_idx(self, var):
+        if var not in self.vars:
+            raise ValueError(f"Error: the variable {var} is not present")
+        return self.vars.index(var)
     
     def get_X(self):
         return self.inputs
@@ -350,10 +366,14 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     # normalize all remaining data
     # add these columns back at the end
     _df = df_X_y.drop(columns=["DAY", "NEE", "SEASON_YEAR", "USTAR"])
+    means = _df.mean()
+    stds = _df.std()
     _df = (_df - _df.mean())/_df.std()
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
     _df["SEASON_YEAR"] = df_X_y['SEASON_YEAR']
+
+    vars = pd.DataFrame(_df.drop(columns=['SEASON_YEAR', 'DAY', 'NEE'])).columns.to_list()
 
     if time_series:
         X_dataset = []
@@ -439,7 +459,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
             df_eval = pd.concat([X_df_eval, y_df_eval, dates_eval, years_eval], axis=1)
             return AmeriFLUXLinearDataset(df_train), AmeriFLUXLinearDataset(df_eval)
         else:
-            return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx)
+            return AmeriFLUXSequenceDataset(X_train, y_train, dates_train, train_years_idx, vars=vars, means=means, stds=stds), AmeriFLUXSequenceDataset(X_eval, y_eval, dates_eval, eval_years_idx, vars=vars, means=means, stds=stds)
 
     else:
         # if we are not generating time series data, we do not want any nans to remain in the dataset
@@ -476,7 +496,7 @@ if __name__=='__main__':
         'SWC_4_1_1',
         'RH',
         'PPFD_IN',
-        'TS_1_3_1',
+        #'TS_1_4_1',
         'P',
         'WD',
         'WS',
@@ -498,12 +518,10 @@ if __name__=='__main__':
         #'CO2', # many gaps although does not correlate with other input vars
         #'LE' # correlates strongly with PPFD_IN (0.8)
     ]
+    for ts_var in ['TS_1_3_1', 'TS_1_4_1', 'TS_1_5_1', 'TS_1_6_1']:
+        get_dataset_size_diff(Site.Me2, [*candidate_input_cols, ts_var], ts_var, sequence_length=7)
     # for col in candidate_input_cols:
     #     if col in ['PPFD_IN', 'D_SNOW']:
     #         continue
     #     get_dataset_size_diff(Site.Me2, candidate_input_cols, col, sequence_length=7)
-    train, test = prepare_data(Site.Me2, candidate_input_cols, sequence_length=7, peak_NEE=True)
-    peak_size = len(train) + len(test)
-    train, test = prepare_data(Site.Me2, candidate_input_cols, sequence_length=7, peak_NEE=False)
-    avg_size = len(train) + len(test)
-    print(f"Size for peak nee {peak_size}, size for average nee {avg_size}")
+

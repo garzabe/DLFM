@@ -51,7 +51,7 @@ def main():
     me6_filepath = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_17-5/AMF_US-Me6_BASE_HH_17-5.csv'
     me2_data = pd.read_csv(me2_filepath, header=2)
     me6_data = pd.read_csv(me6_filepath, header=2)
-    print(me6_data.columns)
+    print(me2_data.columns)
 
     me2_data.replace(-9999, np.nan, inplace=True)
     me6_data.replace(-9999, np.nan, inplace=True)
@@ -93,16 +93,23 @@ def main():
         'CO2', # many gaps although does not correlate with other input vars
         'LE' # correlates strongly with PPFD_IN (0.8)
     ]
-    me2_data = me2_data[['TIMESTAMP_START', *candidate_columns, 'NEE_PI_F', 'GPP_PI_F']]
+    temp_vars = [
+        'TS_1_3_1',
+        'TS_1_4_1',
+        'TS_1_5_1',
+        'TS_1_6_1',
+        'TA_1_1_3'
+    ]
+    me2_data = me2_data[['TIMESTAMP_START', *temp_vars, 'NEE_PI_F', 'GPP_PI_F']]
     print(f"Before preprocessing, there are {len(me2_data)} datapoints")
 
     # drop rows with NA that are NOT the target variable
     me2_data.dropna(subset=me2_data.drop(columns=['NEE_PI_F']).columns, how='any', inplace=True)
     print(f"After dropping nans, there are {len(me2_data)} datapoints remaining")
 
-    me2_data['TIME'] = pd.to_datetime(me2_data['TIMESTAMP_START'], format="%Y%m%d%H%M")
+    #me2_data['TIME'] = pd.to_datetime(me2_data['TIMESTAMP_START'], format="%Y%m%d%H%M")
 
-    me2_inputs = me2_data[[*me2_input_column_set]]
+    me2_inputs = me2_data[[*temp_vars]]
     me2_inputs = (me2_inputs - me2_inputs.mean())/me2_inputs.std()
 
     me2_cov = me2_inputs.cov()

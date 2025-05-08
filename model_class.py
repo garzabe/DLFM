@@ -96,15 +96,15 @@ class LSTM(NEPModel):
     def __init__(self, num_features : int, **kwargs):
         super().__init__()
 
-        hidden_state_size = xLSTM.LATENT_DIM # kwargs.get('hidden_state_size', 8)
+        hidden_state_size = kwargs.get('hidden_state_size', 8)
         num_layers = kwargs.get('num_layers', 1)
         dropout = kwargs.get('dropout', 0.0)
         batch_size = kwargs.get("batch_size", 1)
 
         self.num_layers = num_layers
 
-        self.h0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
-        self.c0 = torch.zeros(hidden_state_size).to(("cuda" if torch.cuda.is_available() else "cpu"))
+        self.h0 = torch.zeros(hidden_state_size, requires_grad=True).to(("cuda" if torch.cuda.is_available() else "cpu"))
+        self.c0 = torch.zeros(hidden_state_size, requires_grad=True).to(("cuda" if torch.cuda.is_available() else "cpu"))
 
         self.lstm = nn.LSTM(num_features, hidden_state_size, num_layers=num_layers, dropout=dropout, batch_first=True)
         self.relu = nn.ReLU()
