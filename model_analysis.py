@@ -214,16 +214,16 @@ def best_vanilla_network_search(site, input_columns, sequence_length=None, flatt
                         batch_size=[32,64],
                         sequence_length=sequence_length, time_series=True, flatten=True)
     
-def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=None, model_class = LSTM, dropout=0.0, weight_decay=0.0):
+def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=None, model_class = LSTM, dropout=[0.0, 0.001], weight_decay=[0.0, 0.001]):
     train_test_eval(model_class, site=site, input_columns=input_columns,
                     num_folds=7,
-                    epochs=[500, 2000, 5000],
+                    epochs=[100, 500],
                     lr=[1e-2, 1e-3],
                     batch_size=[64],
                     sequence_length= sequence_length, 
                     max_sequence_length=max_sequence_length,
-                    hidden_state_size=[4,8,15],
-                    num_layers=[1,2,3],
+                    hidden_state_size=[8,15],
+                    num_layers=[2,3],
                     dropout=dropout,
                     weight_decay=weight_decay,
                     time_series=True)
