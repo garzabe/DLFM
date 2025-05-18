@@ -148,12 +148,16 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
 
         means = iter.sum(axis=0)/num_models
 
+        ci_low = []
+        ci_high = []
         for var, mean in zip(iter, means):
-            st.t.interval(0.95, len(iter)-1, loc=mean, scale=st.sem(var))
-        quartile25 = np.percentile(iter, 25, axis=0)
-        quartile75 = np.percentile(iter, 75, axis=0)
+            lo, hi = st.norm.interval(0.95, loc=mean, scale=st.sem(var))
+            ci_low.append(lo)
+            ci_high.append(hi)
+        #quartile25 = np.percentile(iter, 25, axis=0)
+        #quartile75 = np.percentile(iter, 75, axis=0)
         # axis 0: timestep; axis 1: variable
-        var_metrics = np.array([means, quartile25, quartile75])
+        var_metrics = np.array([means, ci_low, ci_high])
 
         results.append(var_metrics)
         r2_results.append(r2)
@@ -449,13 +453,27 @@ me6_input_column_set = [
 ]
 
 def main():
-    site = Site.Me2
-    MAX_SEQUENCE_LENGTH=4
+    SITE = Site.Me2
+    COLUMNS = me2_input_column_set
+    MAX_SEQUENCE_LENGTH=90
 
     model_class = LSTM
     hparams : dict[str, str | int] = default_hparams[model_class]
     hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
-    variable_importance(site, me2_input_column_set, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), **hparams)
-                
+    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), **hparams)
+    # flattened XGBoost
+    for s in [4,5,6,7,14,31,90]:
+        train_test_eval(XGBoost, SITE, COLUMNS, lr=[0.01, 0.001], n_estimators=[100, 1000, 10000], flatten=True, sequence_length=s, num_folds=7, num_models=100)
+    # statistic XGBoost
+    for s in [1,2,3,4,5,6,7,14,31,90]:
+        train_test_eval(XGBoost, SITE, COLUMNS, lr=[0.01, 0.001], n_estimators=[100, 1000, 10000], flatten=False, stat_interval=s, num_folds=7, num_models=100)
+    # flattened RandomForest
+    for s in [1,2,3,4,5,6,7,14,31,90]:
+        train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[100, 1000, 10000], flatten=True, sequence_length=s, num_folds=7, num_models=100)
+    # statistic RandomForest
+    for s in [1,2,3,4,5,6,7,14,31,90]:
+        train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[100, 1000, 10000], flatten=False, stat_interval=s, num_folds=7, num_models=100)
+
+
 if __name__=="__main__":
     main()

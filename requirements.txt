@@ -1,9 +1,13 @@
-pandas
-numpy
-matplotlib
-torch
-torcheval
-scikit-learn
-tqdm
-xgboost
-latex
+matplotlib==3.7.0
+numpy==1.23.5
+pandas==1.5.3
+scikit_learn==1.2.1
+scipy==1.10.0
+seaborn==0.13.2
+torch==2.5.1
+# likely don't need this torch==1.12.1
+torcheval==0.0.7
+tqdm==4.67.1
+# likely don't need this tqdm==4.64.1
+xgboost==3.0.1
+# latex likely not needed anymore
