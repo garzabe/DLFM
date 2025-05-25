@@ -142,7 +142,7 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
         sl_arg = {'stat_interval' if use_stat_interval else 'sequence_length': sl}
         iter = []
         for _ in range(num_models):
-            r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, **sl_arg, **sequence_args)
+            r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, skip_eval=True, **sl_arg, **sequence_args)
             iter.append([r2, mse, r2_t, mse_t])
         iter = np.array(iter)
 
