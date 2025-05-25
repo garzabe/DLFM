@@ -10,3 +10,4 @@ training_results*
 pruning_results*
 Training Runs
 .DS_Store
+*.swp
