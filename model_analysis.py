@@ -57,8 +57,8 @@ def find_prefix(var_name : str):
 default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01},
                    DynamicANN: {'layer_dims': [(10,6)], 'epochs': [400], 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01, 'flatten': True},
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
-                   LSTM: {'hidden_state_size': 8, 'num_layers': 3, 'epochs': 100, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.00, 'momentum': 0.001}, # [8, 15]
-                   xLSTM: {'epochs': 600, 'batch_size': 64, 'lr': 0.005, 'weight_decay': 0.0, 'momentum': 0.001},
+                   LSTM: {'hidden_state_size': 8, 'num_layers': 3, 'epochs': 100, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.00, 'momentum': 0.001, 'dropout': 0.0}, # [8, 15]
+                   xLSTM: {'epochs': 600, 'batch_size': 64, 'lr': 0.005, 'weight_decay': 0.0, 'momentum': 0.001, 'dropout': 0.0},
                    XGBoost: {'lr': 0.01, 'n_estimators': 1000},
                    RandomForest: {'n_estimators': 10000}}
 
@@ -204,7 +204,8 @@ def best_vanilla_network_search(site, input_columns, sequence_length=None, flatt
                         epochs=[200, 400, 800],
                         lr=[1e-3, 1e-2],
                         batch_size=[32,64],
-                        stat_interval=sequence_length)
+                        stat_interval=sequence_length,
+                        num_models=100)
     else:
         train_test_eval(DynamicANN, site=site, input_columns=input_columns,
                         layer_dims=[(4, ), (8, ), (10, ), (4,4), (6,4), (10,4), (6,6), (10,6), (4,4,4)],
@@ -212,7 +213,8 @@ def best_vanilla_network_search(site, input_columns, sequence_length=None, flatt
                         epochs=[200, 400, 800],
                         lr=[1e-3, 1e-2],
                         batch_size=[32,64],
-                        sequence_length=sequence_length, time_series=True, flatten=True)
+                        sequence_length=sequence_length, time_series=True, flatten=True,
+                        num_models=100)
     
 def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=None, model_class = LSTM, dropout=[0.0, 0.001], weight_decay=[0.0, 0.001]):
     train_test_eval(model_class, site=site, input_columns=input_columns,
@@ -226,7 +228,8 @@ def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=No
                     num_layers=[2,3],
                     dropout=dropout,
                     weight_decay=weight_decay,
-                    time_series=True)
+                    time_series=True,
+                    num_models=100)
     
 def variable_importance(site, input_columns, model_class, var_names : list[str], timesteps=None, **model_kwargs):
     # train a model
@@ -455,7 +458,13 @@ def main():
     model_class = LSTM
     hparams : dict[str, str | int] = default_hparams[model_class]
     hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
-    variable_importance(site, me2_input_column_set, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), **hparams)
+    #variable_importance(site, me2_input_column_set, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), **hparams)
+    for s in [1,2,3,4,5,6,7,14,31,90]:
+    	train_test_eval(XGBoost, site=site, input_columns=me2_input_column_set, lr=[0.01], n_estimators=10000, stat_interval=s, flatten=False, num_models=20)
+    for s in [1,2,3,4,5,6,7,14,31,90]:
+    	train_test_eval(RandomForest, site=site, input_columns=me2_input_column_set, n_estimators=1000, stat_interval=s, flatten=False, num_models=20)
+    for s in [1,2,3,4,5,6,7,14,31,90]:
+    	train_test_eval(DynamicANN, site=site, input_columns=me2_input_column_set, layer_dims=(10,6), epochs=200, lr=1e-2, batch_size=64, weight_decay=0.001, stat_interval=s, flatten=False, num_models=20)
                 
 if __name__=="__main__":
     main()
