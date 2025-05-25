@@ -329,7 +329,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest
             eval_loader = DataLoader(eval_data, batch_size=64)
             optimizer = optimizer_class(model.parameters(), lr=best['lr'], weight_decay=best['weight_decay'], momentum=best['momentum'])
-            final_model_history = train_test(train_loader, eval_loader, model, best['epochs'], loss_fn, optimizer, device, context='Best Model', skip_curve=skip_curve)
+            train_test(train_loader, eval_loader, model, best['epochs'], loss_fn, optimizer, device, context='Best Model', skip_curve=skip_curve)
         models.append(model)
 
 
@@ -390,6 +390,7 @@ def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset,
                 y_pred = model(_X)
                 y_predictions.append(y_pred)
             else:
+                model.eval()
                 _y_pred : torch.Tensor = model(_X_tensor)
                 y_pred = [a[0] for a in _y_pred.detach().cpu().numpy()]
                 y_predictions.append(y_pred)

@@ -100,9 +100,11 @@ def main():
         'TS_1_6_1',
         'TA_1_1_3'
     ]
+    #plt.rcParams['text.usetex'] = True
     me2_data = me2_data[['TIMESTAMP_START', *me2_input_column_set, 'NEE_PI_F', 'GPP_PI_F']]
-    print(f"Before preprocessing, there are {len(me2_data)} datapoints")
-    plot_daily_avg(me2_data, 'NEE', 'NEE')
+    me2_data['NEP'] = -me2_data['NEE_PI_F']
+    #plot_daily_avg(me2_data[me2_data['TIMESTAMP_START'] // 10e5 == 200810], 'TS_1_3_1', 'US-Me2')
+    #plot_daily_avg(me2_data, 'TS', 'US-Me2')
 
     # drop rows with NA that are NOT the target variable
     me2_data.dropna(subset=me2_data.drop(columns=['NEE_PI_F']).columns, how='any', inplace=True)
@@ -110,14 +112,23 @@ def main():
 
     #me2_data['TIME'] = pd.to_datetime(me2_data['TIMESTAMP_START'], format="%Y%m%d%H%M")
 
-    me2_inputs = me2_data[[*temp_vars]]
+    me2_inputs = me2_data[[*me2_input_column_set]]
     me2_inputs = (me2_inputs - me2_inputs.mean())/me2_inputs.std()
-
+    me2_inputs = me2_inputs.rename(columns={'D_SNOW': 'Snow Depth',
+                               'SWC_4_1_1': 'Soil Water\nContent',
+                               'RH': 'Relative\nHumidity',
+                               'PPFD_IN': 'Photon Flux\nDensity',
+                               'TS_1_3_1': 'Soil\nTemp',
+                               'P':'Precipitation',
+                               'WD': 'Wind\nDirection',
+                               'WS':'Wind\nSpeed',
+                               'TA_1_1_3':'Air\nTemp'})
     me2_cov = me2_inputs.cov()
     print(me2_cov)
     import seaborn as sns
     cmap = sns.diverging_palette(250, 10, as_cmap=True)
-    sns.heatmap(me2_cov, cmap=cmap, annot=True)
+    plt.title("Final Feature Set Covariance Matrix")
+    sns.heatmap(me2_cov, cmap=cmap, annot=True, fmt='.2f')
     plt.show()
 
     #me2_data['TIME_DIFF'] = me2_data['TIME'].diff()
@@ -200,7 +211,7 @@ def main():
 
 
     #plot_daily_avg(me2_data, 'PPFD_IN', 'Me-2 Daytime', daytime_only=True)
-    plot_day_averages(me2_data, 'NEE_PI_F')
+    #plot_day_averages(me2_data, 'NEE_PI_F')
     #plot_daily_avg(me2_data, 'RECO', 'Me-2')
     #for column in me6_input_column_set:
     #    plot_annual_avg(me6_data, column, 'Me-6')
@@ -301,7 +312,6 @@ def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, day
     ### reduce to daily averages
     df['DATETIME'] = pd.to_datetime(df['TIMESTAMP_START'], format="%Y%m%d%H%M")
     df['DAY'] = df['DATETIME'].apply(lambda dt: f"{dt.year:04}{dt.month:02}{dt.day:02}")
-    print(df.head())
 
     # remove nighttime rows
     if daytime_only:
@@ -317,20 +327,28 @@ def plot_daily_avg(df : pd.DataFrame, col_category: str, title_prefix : str, day
     means.sort_values("DAY", ascending=True,axis=0)
     dates = pd.to_datetime(means['DAY'], format="%Y%m%d").to_list()
     x = [d.date() for d in dates]
-    for i in range(10):
-        print(x[i], means.iloc[i])
+    
+    plt.clf()
     fig, ax1 = plt.subplots()
     ax1.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d/%Y"))
     ax1.xaxis.set_major_locator(mdates.DayLocator())
     #X = means["DAY"].to_list()
     for col in cols:
-        y = means[col]['mean'].to_list()
-        ax1.plot(x, y, label=col)
+        _means = means[means[col]['count'] >= 9]
+        _bad_means = means[means[col]['count'] < 9]
+        _dates = pd.to_datetime(_means['DAY'], format="%Y%m%d").to_list()
+        _bad_dates = pd.to_datetime(_bad_means['DAY'], format="%Y%m%d").to_list()
+        _x = [d.date() for d in _dates]
+        _bad_x = [d.date() for d in _bad_dates]
+        y = _means[col]['mean'].to_list()
+        _bad_y = _bad_means[col]['mean'].to_list()
+        ax1.scatter(_x, y, s=2)
+        ax1.scatter(_bad_x, _bad_y, c='r', s=2)
     plt.xticks([x[i] for i in range(0, len(x), len(x)//10)])
     fig.autofmt_xdate()
     ax1.set_ylabel(col_ylabel)
     plt.suptitle(f'{title_prefix} - {col_title} - Daily Averages')
-    ax1.legend()
+    #ax1.legend([r'Reading count $\geq 9$', r'Reading count $< 9$'])
     plt.show()
 
 def plot_day_averages(df: pd.DataFrame, col: str):
