@@ -5,7 +5,7 @@ import numpy as np
 import scipy.stats as st
 from datetime import datetime
 
-from data_handler import  Site, prepare_data
+from data_handler import  Site, prepare_data, get_dataset_size_diff
 from train import train_test_eval, fmt_date_string, train_hparam #, feature_pruning
 from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest, xLSTM
 
@@ -57,7 +57,7 @@ def find_prefix(var_name : str):
 default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01},
                    DynamicANN: {'layer_dims': [(10,6)], 'epochs': [400], 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01, 'flatten': True},
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
-                   LSTM: {'hidden_state_size': 8, 'num_layers': 3, 'epochs': 100, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.00, 'momentum': 0.001}, # [8, 15]
+                   LSTM: {'hidden_state_size': 8, 'num_layers': 3, 'epochs': 500, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.001, 'dropout':0.001,'momentum': 0.00}, # [8, 15]
                    xLSTM: {'epochs': 600, 'batch_size': 64, 'lr': 0.005, 'weight_decay': 0.0, 'momentum': 0.001},
                    XGBoost: {'lr': 0.01, 'n_estimators': 1000},
                    RandomForest: {'n_estimators': 10000}}
@@ -256,7 +256,7 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
     # either show dates on the x-axis or show input values
     show_dates = False
     # either show a scatterplot or shows stats on the partials
-    scatter = True
+    scatter = False
 
     # evaluate partial derivatives between -2*sigma to 2*sigma
     # for xLSTM which considers the interplay between vars, this generated data might not be ideal
@@ -415,11 +415,11 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
         plt.clf()
         for var_name in var_partials.keys():
             var_prefix = find_prefix(var_name)
-            plt.plot(range(0,max(timesteps)+1), var_partials[var_name], label=column_labels[var_prefix]['title'])
+            plt.plot(timesteps, var_partials[var_name], label=column_labels[var_prefix]['title'])
         #plt.yscale('log')
         plt.xlabel('Days before prediction')
         plt.ylabel(f'Variance of Partial Derivatives of NEP Prediction')
-        plt.xticks(list(range(0, max(timesteps)+1)))
+        plt.xticks(list(range(0, max(timesteps)+1, max(timesteps) // 10)))
         plt.legend()
         plt.show()
 
@@ -460,19 +460,14 @@ def main():
     model_class = LSTM
     hparams : dict[str, str | int] = default_hparams[model_class]
     hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
-    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), **hparams)
+    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
+    variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
     # flattened XGBoost
-    for s in [4,5,6,7,14,31,90]:
-        train_test_eval(XGBoost, SITE, COLUMNS, lr=[0.01, 0.001], n_estimators=[100, 1000, 10000], flatten=True, sequence_length=s, num_folds=7, num_models=100)
-    # statistic XGBoost
-    for s in [1,2,3,4,5,6,7,14,31,90]:
-        train_test_eval(XGBoost, SITE, COLUMNS, lr=[0.01, 0.001], n_estimators=[100, 1000, 10000], flatten=False, stat_interval=s, num_folds=7, num_models=100)
-    # flattened RandomForest
-    for s in [1,2,3,4,5,6,7,14,31,90]:
-        train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[100, 1000, 10000], flatten=True, sequence_length=s, num_folds=7, num_models=100)
-    # statistic RandomForest
-    for s in [1,2,3,4,5,6,7,14,31,90]:
-        train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[100, 1000, 10000], flatten=False, stat_interval=s, num_folds=7, num_models=100)
+    #train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[10000], flatten=True, sequence_length=2, num_models=20)
+    #for s in [2,3,4,5,6,7,14,31,90]:
+        #train_test_eval(XGBoost, SITE, COLUMNS, lr=[0.001], n_estimators=[10000], flatten=True, sequence_length=s, num_models=20)
+        #train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[1000], flatten=True, sequence_length=s, num_models=20)
+
 
 
 if __name__=="__main__":
