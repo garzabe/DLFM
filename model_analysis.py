@@ -57,13 +57,8 @@ def search_longest_sequence(input_columns, ustar=None):
         print(f"Testing {sequence_length}")
         r2 = train_test_eval(RNN, site=Site.Me2, input_columns=input_columns, epochs=1, num_folds=2, time_series=True, sequence_length=sequence_length, skip_eval=True)
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
-<<<<<<< HEAD
-                   LSTM: {'hidden_state_size': 8, 'num_layers': 3, 'epochs': 100, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.00, 'momentum': 0.001, 'dropout': 0.0}, # [8, 15]
-                   xLSTM: {'epochs': 600, 'batch_size': 64, 'lr': 0.005, 'weight_decay': 0.0, 'momentum': 0.001, 'dropout': 0.0},
-=======
                    LSTM: {'hidden_state_size': 8, 'num_layers': 3, 'epochs': 500, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.001, 'dropout':0.001,'momentum': 0.00}, # [8, 15]
                    xLSTM: {'epochs': 600, 'batch_size': 64, 'lr': 0.005, 'weight_decay': 0.0, 'momentum': 0.001},
->>>>>>> 24b3669a55d5699b29dc7852659bb342030909d8
                    XGBoost: {'lr': 0.01, 'n_estimators': 1000},
                    RandomForest: {'n_estimators': 10000}}
 
