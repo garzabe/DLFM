@@ -112,7 +112,7 @@ class AmeriFLUXSequenceDataset(Dataset):
         return len(self.years)
     
     def get_train_test_idx(self, delta_year : int) -> tuple[list[int], list[int]]:
-        if delta_year > len(self.years):
+        if delta_year >= len(self.years):
             print(f"Warning: delta_year ({delta_year}) is greater than the number of years in the dataset ({len(self.years)})")
             return None, None
         year = self.years[-1-delta_year]

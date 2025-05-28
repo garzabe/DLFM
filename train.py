@@ -48,7 +48,7 @@ def train(dataloader : DataLoader,
         optimizer.step()
         optimizer.zero_grad()
 
-def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.Module, device) -> None:
+def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.Module, device, dataset_name = "Validation") -> None:
     size = len(dataloader.dataset)
     model.eval()
     num_batches = len(dataloader)
@@ -60,10 +60,10 @@ def test(dataloader : DataLoader, model : nn.Module, loss_fn : nn.Module, device
             test_loss += loss_fn(pred, y.to(device)).item()
             
     test_loss /= num_batches
-    print(f"Test Avg loss: {test_loss:>8f}")
+    print(f"{dataset_name} Avg loss: {test_loss:>8f}")
     return test_loss
 
-def eval(dataloader : DataLoader, model : nn.Module, metric_fn : Metric, device) -> float:
+def eval(dataloader : DataLoader, model : nn.Module, metric_fn : Metric, device, dataset_name = "Evaluation") -> float:
     size = len(dataloader.dataset)
     model.eval()
 
@@ -72,7 +72,7 @@ def eval(dataloader : DataLoader, model : nn.Module, metric_fn : Metric, device)
             pred = model(X.to(device))
             metric_fn.update(input=pred, target=y.to(device))
             
-    print(f"Metric value: {metric_fn.compute().item():>8f}")
+    print(f"{dataset_name} {metric_fn.__class__.__name__} value: {metric_fn.compute().item():>8f}")
     return metric_fn.compute().item()
 
 def train_test(train_dataloader, test_dataloader, model, epochs, loss_fn, optimizer, device, skip_curve = False, context=None):
@@ -80,12 +80,12 @@ def train_test(train_dataloader, test_dataloader, model, epochs, loss_fn, optimi
     for t in range(epochs):
         print(f"Epoch {t+1}")
         train(train_dataloader, model, loss_fn, optimizer, device)
-        train_loss = test(train_dataloader, model, loss_fn, device)
-        test_loss = test(test_dataloader, model, loss_fn, device)
+        train_loss = test(train_dataloader, model, loss_fn, device, dataset_name="Training")
+        test_loss = test(test_dataloader, model, loss_fn, device, dataset_name='Validation')
 
         # compute the r squared value for this model
         r2metric = R2Score(device=device)
-        r2 = eval(test_dataloader, model, r2metric, device)
+        r2 = eval(test_dataloader, model, r2metric, device, dataset_name="Validation")
         history.append({'epoch': t+1, 'train_loss': train_loss, 'test_loss': test_loss, 'r2': r2})
 
     if not skip_curve:
@@ -122,23 +122,32 @@ def train_kfold(num_folds : int,
     r2_results = {}
     loss_results = {}
     sklearn_model = model_class.__name__ in ['XGBoost', 'RandomForest']
+    sequence_length = model_kwargs.get('sequence_length', 1)
+    print(sequence_length)
 
+    
     # use our own fold indexing
-    for fold in range(num_folds):
-        print(f"Fold {fold+1}: ")
+    fold = 0
+    delta_year = 0
+    while fold < num_folds:
         # set up next model
         if sklearn_model:
             model = model_class(lr=lr, **model_kwargs)
         else:
             model : nn.Module = model_class(num_features, batch_size=bs, **model_kwargs).to(device)
-        if fold==0:
-            print(model)
+
         # start with the last year as the first validation year and work our way back with each fold
-        train_idx, test_idx = train_data.get_train_test_idx(fold)
+        train_idx, test_idx = train_data.get_train_test_idx(delta_year)
         if train_idx is None:
             print("No more one-year folds can be done, ending K-Fold cross validation")
             break
-
+        min_validation_size = 200 - np.sqrt(80*sequence_length) // 1
+        if len(test_idx) < min_validation_size:
+            # bad year, try a different one
+            delta_year += 1
+            continue
+        
+        print(f"Fold {fold+1}")
         if sklearn_model:
             X = train_data.get_X()
             y = train_data.get_y()
@@ -158,14 +167,17 @@ def train_kfold(num_folds : int,
             test_subsampler = SubsetRandomSampler(test_idx)
 
             train_loader = DataLoader(train_data, batch_size=bs, sampler=train_subsampler, drop_last=True)
-            test_loader = DataLoader(train_data, batch_size=1, sampler=test_subsampler)
+            test_loader = DataLoader(train_data, batch_size=len(test_subsampler), sampler=test_subsampler)
+            
 
             # Using SGD here but could also do Adam or others
             optimizer = optimizer_class(model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
-
+            
             history = train_test(train_loader, test_loader, model, epochs, loss_fn, optimizer, device,context='K-Fold', skip_curve=True)
             r2_results[fold] = history[-1]['r2']
             loss_results[fold] = history[-1]['train_loss']
+        fold += 1
+        delta_year += 1
 
     # display r squared results
     print("K-Fold Cross Validation Results")
@@ -327,7 +339,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
             if i==0:
                 print(model)
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest
-            eval_loader = DataLoader(eval_data, batch_size=64)
+            eval_loader = DataLoader(eval_data, batch_size=len(eval_data))
             optimizer = optimizer_class(model.parameters(), lr=best['lr'], weight_decay=best['weight_decay'], momentum=best['momentum'])
             train_test(train_loader, eval_loader, model, best['epochs'], loss_fn, optimizer, device, context='Best Model', skip_curve=skip_curve)
         models.append(model)
@@ -490,14 +502,14 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
             device = None
         else:
             train_loader = DataLoader(train_data, batch_size=64)
-            eval_loader = DataLoader(eval_data, batch_size=1)
+            eval_loader = DataLoader(eval_data, batch_size=len(eval_data))
             device = ("cuda" if torch.cuda.is_available() else "cpu")
             r2_metric = R2Score(device=device)
             mse_metric = MeanSquaredError(device=device)
             r2_evals.append(eval(eval_loader, model, r2_metric, device))
-            r2_train.append(eval(train_loader, model, r2_metric, device))
+            r2_train.append(eval(train_loader, model, r2_metric, device, dataset_name="Training"))
             mse_evals.append(eval(eval_loader, model, mse_metric, device))
-            mse_train.append(eval(train_loader, model, mse_metric, device))
+            mse_train.append(eval(train_loader, model, mse_metric, device, dataset_name="Training"))
 
     if skip_eval:
         return np.mean(r2_evals), np.mean(mse_evals), np.mean(r2_train), np.mean(mse_train)

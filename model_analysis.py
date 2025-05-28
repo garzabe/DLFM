@@ -55,12 +55,12 @@ def find_prefix(var_name : str):
     return var_name
 
 default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01},
-                   DynamicANN: {'layer_dims': [(10,6)], 'epochs': [400], 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01, 'flatten': True},
+                   DynamicANN: {'layer_dims': [(6,4), (10,6)], 'epochs': [400, 800], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001], 'flatten': True}, #32C
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
-                   LSTM: {'hidden_state_size': 8, 'num_layers': 3, 'epochs': 500, 'batch_size': 64, 'lr': 0.01, 'weight_decay': 0.001, 'dropout':0.001,'momentum': 0.00}, # [8, 15]
-                   xLSTM: {'epochs': 600, 'batch_size': 64, 'lr': 0.005, 'weight_decay': 0.0, 'momentum': 0.001},
-                   XGBoost: {'lr': 0.01, 'n_estimators': 1000},
-                   RandomForest: {'n_estimators': 10000}}
+                   LSTM: {'hidden_state_size': [8,15], 'num_layers': [2,3], 'epochs': [100,500], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001],'momentum': 0.00}, # 64C
+                   xLSTM: {'epochs': [300, 600, 1000], 'batch_size': 64, 'lr': [0.001, 0.01], 'weight_decay': [0.0, 0.001]}, # 12C
+                   XGBoost: {'lr': 0.01, 'n_estimators': [1000, 10000]}, # 2C
+                   RandomForest: {'n_estimators': [1000, 10000]}} # 2C
 
 def test_tte():
     simple_cols = ['P', 'PPFD_IN', 'D_SNOW']
@@ -401,18 +401,25 @@ me6_input_column_set = [
 def main():
     SITE = Site.Me2
     COLUMNS = me2_input_column_set
-    MAX_SEQUENCE_LENGTH=31
+    MAX_SEQUENCE_LENGTH=45
+    sequence_lengths = [1,2,3,4,5,6,7,14,31,90]
+    n_folds = 3
+    n_models = 20
 
-    model_class = DynamicANN
+    model_class = LSTM
+    flatten = False
     hparams : dict[str, str | int] = default_hparams[model_class]
-    hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
+    #hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
     #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,3)), **hparams)
     #variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
-    # flattened XGBoost
-    train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[10000], flatten=True, sequence_length=90, num_models=20)
-    for s in [2,3,4,5,6,7,14,31,90]:
-        #train_test_eval(XGBoost, SITE, COLUMNS, lr=[0.001], n_estimators=[10000], flatten=True, sequence_length=s, num_models=20)
-        train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[1000], flatten=False, stat_interval=s, num_models=20)
+    
+    # checking fold sizes
+
+    # train
+    for s in sequence_lengths:
+        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+
+    #plot_sequence_importance(SITE, COLUMNS, LSTM, num_models=20, max_sequence_length=MAX_SEQUENCE_LENGTH, **default_hparams[LSTM])
 
 
 
