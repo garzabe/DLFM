@@ -150,7 +150,7 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
 
         ci_low = []
         ci_high = []
-        for var, mean in zip(iter, means):
+        for var, mean in zip(iter.transpose(), means):
             lo, hi = st.norm.interval(0.95, loc=mean, scale=st.sem(var))
             ci_low.append(lo)
             ci_high.append(hi)
@@ -256,7 +256,7 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
     # either show dates on the x-axis or show input values
     show_dates = False
     # either show a scatterplot or shows stats on the partials
-    scatter = False
+    scatter = True
     
     partials = {}
     inputs = {}
@@ -317,7 +317,8 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
             sigma_partial = np.std(partials[var_name][timestep])
             sigma_partials[var_name].append(sigma_partial)
 
-    if scatter:           
+    if scatter: 
+        
         # For each variable, make a plot
         # On each plot, there are len(timestep) partial curves for each timestep evaluated
         for var_name in var_names:
@@ -325,13 +326,14 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
             plt.clf()
             plt.title(f"Partial Derivatives of predicted {'NEP' if show_NEP else 'NEE'} with respect to {var_name}")
             plt.xlabel(column_labels[var_prefix]['y_label'])
-            plt.ylabel("Partial Derivative")
+            plt.ylabel(rf'$\delta$NEP / $\delta${var_name}')
             if show_dates:
                 plt.xticks([1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335],
                             ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
             plt.ylim(-2,2)
             #plt.xticks(test_values)
-            for timestep in timesteps:
+            colors = ['b','r','g','m']
+            for i, timestep in enumerate(timesteps):
                 if  show_dates:
                     unnorm = inputs[var_name][timestep]
                 else:
@@ -351,9 +353,9 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
                     f = np.poly1d(np.polyfit(_x_wrap, _y_wrap, 9))
                 else:
                     f = np.poly1d(np.polyfit(_x,_y,3))
-                plt.scatter(_x, _y, s=0.2)
-                plt.plot(_x, f(_x), label=f"{timestep} days before prediction")
-            plt.legend()
+                plt.scatter(_x, _y, s=0.6, c=colors[i])
+                #plt.plot(_x, f(_x), label=f"{timestep} days before prediction")
+            plt.legend([f"{timestep} day{'s' if timestep != 1 else ''} before prediction" for timestep in timesteps])
             plt.show()
     else:
         plt.clf()
@@ -399,18 +401,18 @@ me6_input_column_set = [
 def main():
     SITE = Site.Me2
     COLUMNS = me2_input_column_set
-    MAX_SEQUENCE_LENGTH=90
+    MAX_SEQUENCE_LENGTH=31
 
-    model_class = LSTM
+    model_class = DynamicANN
     hparams : dict[str, str | int] = default_hparams[model_class]
     hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
-    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
-    variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
+    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,3)), **hparams)
+    #variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
     # flattened XGBoost
-    #train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[10000], flatten=True, sequence_length=2, num_models=20)
-    #for s in [2,3,4,5,6,7,14,31,90]:
+    train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[10000], flatten=True, sequence_length=90, num_models=20)
+    for s in [2,3,4,5,6,7,14,31,90]:
         #train_test_eval(XGBoost, SITE, COLUMNS, lr=[0.001], n_estimators=[10000], flatten=True, sequence_length=s, num_models=20)
-        #train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[1000], flatten=True, sequence_length=s, num_models=20)
+        train_test_eval(RandomForest, SITE, COLUMNS, n_estimators=[1000], flatten=False, stat_interval=s, num_models=20)
 
 
 

@@ -481,6 +481,12 @@ def get_dataset_size_diff(site_name, input_columns: list[str], col:str, sequence
 if __name__=='__main__':
     from model_analysis import me2_input_column_set
     import matplotlib.pyplot as plt
+    # train, eval = prepare_data(Site.Me2, me2_input_column_set, sequence_length=1, interpolate=False)
+    # size_without = len(train) + len(eval)
+    # train, eval = prepare_data(Site.Me2, me2_input_column_set, sequence_length=1, interpolate=True)
+    # size_with = len(train) + len(eval)
+    # print(f"Interpolation increases dataset from {size_without} to {size_with}")
+    
     sl = [1,2,3,4,5,6,7,14,21,31,62,91,182, 365]
     sizes = []
     for i in sl:
@@ -490,14 +496,17 @@ if __name__=='__main__':
         else:
             sizes.append(0)
 
-    # ideally, only the first L datapoints are removed from the dataset
-    # for not having enough antecedent data
-    ideal_sizes = [sizes[0]-l for l in sl]
-    plt.plot(sl, ideal_sizes, 'g', label='Ideal Dataset Size')
-    plt.plot(sl, sizes, 'b', label='Dataset Size')
-    plt.plot(sl, [0]*len(sl), 'k--')
-    plt.legend()
-    plt.title('Dataset Size After Preparation')
-    plt.xlabel('Sequence Length (days)')
-    plt.ylabel('Dataset Size')
-    plt.show()
+    for l, size in zip(sl, sizes):
+        print(f"{l}: {size}")
+
+    # # ideally, only the first L datapoints are removed from the dataset
+    # # for not having enough antecedent data
+    # ideal_sizes = [sizes[0]-l for l in sl]
+    # plt.plot(sl, ideal_sizes, 'g', label='Ideal Dataset Size')
+    # plt.plot(sl, sizes, 'b', label='Dataset Size')
+    # plt.plot(sl, [0]*len(sl), 'k--')
+    # plt.legend()
+    # plt.title('Dataset Size After Preparation')
+    # plt.xlabel('Sequence Length (days)')
+    # plt.ylabel('Dataset Size')
+    # plt.show()
