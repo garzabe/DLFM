@@ -55,7 +55,7 @@ def find_prefix(var_name : str):
     return var_name
 
 default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01},
-                   DynamicANN: {'layer_dims': [(6,4), (10,6)], 'epochs': [400, 800], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001], 'flatten': True}, #32C
+                   DynamicANN: {'layer_dims': [(6,4), (10,6)], 'epochs': [400, 800], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001]}, #32C
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
                    LSTM: {'hidden_state_size': [8,15], 'num_layers': [2,3], 'epochs': [500, 2200], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001],'momentum': 0.00}, # 64C
                    xLSTM: {'epochs': [300, 600, 1000], 'batch_size': 64, 'lr': [0.001, 0.01], 'weight_decay': [0.0, 0.001]}, # 12C
@@ -417,13 +417,15 @@ def main():
    #h = default_hparams[DynamicANN]
    # h.update({'lr': 0.01, 'epochs': 10000, 'flatten' : True})
     #train_test_eval(DynamicANN, SITE, COLUMNS, sequence_length=5, **h)
-    
-    hparams.update({'lr':0.01, 'epochs':300})
-    for s in sequence_lengths:
-        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-    hparams.update({'lr':0.001, 'epochs':1000})
-    for s in sequence_lengths:
-        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+    layer_dims = [(6,4), (10,6), (12,8)]
+    for ld in layer_dims:
+        hparams.update({'layer_dims': ld})
+        hparams.update({'lr':0.01, 'epochs':300})
+        for s in sequence_lengths:
+            train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+        hparams.update({'lr':0.001, 'epochs':1000})
+        for s in sequence_lengths:
+            train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
     #plot_sequence_importance(SITE, COLUMNS, LSTM, num_models=20, max_sequence_length=MAX_SEQUENCE_LENGTH, **default_hparams[LSTM])
 
 
