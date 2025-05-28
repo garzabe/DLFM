@@ -57,7 +57,7 @@ def find_prefix(var_name : str):
 default_hparams = {FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01},
                    DynamicANN: {'layer_dims': [(6,4), (10,6)], 'epochs': [400, 800], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001], 'flatten': True}, #32C
                    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01}, # [8, 15]
-                   LSTM: {'hidden_state_size': [8,15], 'num_layers': [2,3], 'epochs': [100,500], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001],'momentum': 0.00}, # 64C
+                   LSTM: {'hidden_state_size': [8,15], 'num_layers': [2,3], 'epochs': [500, 2200], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001],'momentum': 0.00}, # 64C
                    xLSTM: {'epochs': [300, 600, 1000], 'batch_size': 64, 'lr': [0.001, 0.01], 'weight_decay': [0.0, 0.001]}, # 12C
                    XGBoost: {'lr': 0.01, 'n_estimators': [1000, 10000]}, # 2C
                    RandomForest: {'n_estimators': [1000, 10000]}} # 2C
@@ -403,19 +403,20 @@ def main():
     COLUMNS = me2_input_column_set
     MAX_SEQUENCE_LENGTH=45
     sequence_lengths = [1,2,3,4,5,6,7,14,31,90]
-    n_folds = 3
+    n_folds = 5
     n_models = 20
 
-    model_class = LSTM
-    flatten = False
+    model_class = XGBoost
+    flatten = True
     hparams : dict[str, str | int] = default_hparams[model_class]
     #hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
     #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,3)), **hparams)
     #variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
     
-    # checking fold sizes
-
     # train
+    h = default_hparams[LSTM]
+    h.update({'lr': 0.01, 'epochs': 500, 'num_layers': 2})
+    train_test_eval(LSTM, SITE, COLUMNS, sequence_length=5, **h)
     for s in sequence_lengths:
         train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
 
