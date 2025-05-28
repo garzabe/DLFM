@@ -406,7 +406,7 @@ def main():
     n_folds = 5
     n_models = 20
 
-    model_class = XGBoost
+    model_class = DynamicANN
     flatten = True
     hparams : dict[str, str | int] = default_hparams[model_class]
     #hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
@@ -414,12 +414,16 @@ def main():
     #variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
     
     # train
-    h = default_hparams[LSTM]
-    h.update({'lr': 0.01, 'epochs': 500, 'num_layers': 2})
-    train_test_eval(LSTM, SITE, COLUMNS, sequence_length=5, **h)
+   #h = default_hparams[DynamicANN]
+   # h.update({'lr': 0.01, 'epochs': 10000, 'flatten' : True})
+    #train_test_eval(DynamicANN, SITE, COLUMNS, sequence_length=5, **h)
+    
+    hparams.update({'lr':0.01, 'epochs':300})
     for s in sequence_lengths:
         train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-
+    hparams.update({'lr':0.001, 'epochs':1000})
+    for s in sequence_lengths:
+        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
     #plot_sequence_importance(SITE, COLUMNS, LSTM, num_models=20, max_sequence_length=MAX_SEQUENCE_LENGTH, **default_hparams[LSTM])
 
 
