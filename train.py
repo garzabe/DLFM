@@ -581,5 +581,5 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
 
 def fmt_date_string() -> str:
     dt = datetime.datetime.now()
-    dt_str = f'{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}:{dt.minute:02}:{dt.second:02}'
+    dt_str = f'{dt.year}-{dt.month:02}-{dt.day:02}-{dt.hour:02}-{dt.minute:02}-{dt.second:02}'
     return dt_str
