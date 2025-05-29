@@ -105,7 +105,7 @@ def train_test(train_dataloader, test_dataloader, model, epochs, loss_fn, optimi
         plt.xlabel('Epoch')
         #plt.show()
         dt_str = fmt_date_string()
-        plt.savefig(f'images/training_curve-{dt_str}::{model.__class__.__name__}.png')
+        plt.savefig(f'images/training_curve-{dt_str}-{model.__class__.__name__}.png')
     return history
 
 
@@ -349,7 +349,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
         return models, best | data_best, history
     # visualize the training performance of the final model across time
     dt_str = fmt_date_string()
-    plot_predictions(f'images/trainplot-{dt_str}::{model_name}-{num_folds}fold', models, train_data, best, device)
+    plot_predictions(f'images/trainplot-{dt_str}-{model_name}-{num_folds}fold', models, train_data, best, device)
 
     return models, best | data_best, history
 
@@ -516,10 +516,10 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
 
     dt_str = fmt_date_string()
     # plot evaluation performance
-    plot_predictions(f'images/evalplot-{dt_str}::{model_name}-{num_folds}fold', final_models, eval_data, hparams, device, train=False)
+    plot_predictions(f'images/evalplot-{dt_str}-{model_name}-{num_folds}fold', final_models, eval_data, hparams, device, train=False)
 
     # write the results to an output file
-    with open(f"results/training_results-{dt_str}::{model_name}-{num_folds}fold.md", 'w') as f:
+    with open(f"results/training_results-{dt_str}-{model_name}-{num_folds}fold.md", 'w') as f:
         f.write("### K-Fold Cross-Validation History\n\n")
         f.write(f'## {model_name}\n\n')
         f.write(f"Folds: {num_folds}\n\n")

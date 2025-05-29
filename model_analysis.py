@@ -181,7 +181,7 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
     plt.legend()
     plt.ylim((0.1, 1.0))
     plt.title(f'Importance of Sequence Length for {model_class.__name__} Predictions')
-    plt.savefig(f'images/sequence_length_importance-{dt_str}::{model_class.__name__}-r2.png')
+    plt.savefig(f'images/sequence_length_importance-{dt_str}-{model_class.__name__}-r2.png')
 
     # MSE on both evaluation and training sets
     plt.clf()
@@ -194,7 +194,7 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
     plt.ylabel('MSE')
     plt.legend()
     plt.title(f'Importance of Sequence Length for {model_class.__name__} Predictions')
-    plt.savefig(f'images/sequence_length_importance-{dt_str}::{model_class.__name__}-mse.png')
+    plt.savefig(f'images/sequence_length_importance-{dt_str}-{model_class.__name__}-mse.png')
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
@@ -406,26 +406,32 @@ def main():
     n_folds = 5
     n_models = 20
 
-    model_class = DynamicANN
+    model_class = XGBoost
     flatten = True
     hparams : dict[str, str | int] = default_hparams[model_class]
     #hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
     #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,3)), **hparams)
     #variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
-    
+    for s in sequence_lengths:
+        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+    model_class = RandomForest
+    flatten = True
+    hparams : dict[str, str | int] = default_hparams[model_class]
+    for s in sequence_lengths:
+        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
     # train
    #h = default_hparams[DynamicANN]
    # h.update({'lr': 0.01, 'epochs': 10000, 'flatten' : True})
     #train_test_eval(DynamicANN, SITE, COLUMNS, sequence_length=5, **h)
-    layer_dims = [(6,4), (10,6), (12,8)]
-    for ld in layer_dims:
-        hparams.update({'layer_dims': ld})
-        hparams.update({'lr':0.01, 'epochs':300})
-        for s in sequence_lengths:
-            train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-        hparams.update({'lr':0.001, 'epochs':1000})
-        for s in sequence_lengths:
-            train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+    # layer_dims = [(6,4), (10,6), (12,8)]
+    # for ld in layer_dims:
+    #     hparams.update({'layer_dims': ld})
+    #     hparams.update({'lr':0.01, 'epochs':300})
+    #     for s in sequence_lengths:
+    #         train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+    #     hparams.update({'lr':0.001, 'epochs':1000})
+    #     for s in sequence_lengths:
+    #         train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
     #plot_sequence_importance(SITE, COLUMNS, LSTM, num_models=20, max_sequence_length=MAX_SEQUENCE_LENGTH, **default_hparams[LSTM])
 
 
