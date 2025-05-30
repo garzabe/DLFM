@@ -1,14 +1,11 @@
-__pycache__
-ProjectSpecificationV2.pdf
-Querying Ecosystem Memory - Project Spec.pdf
-Querying Ecosystem Memory - Project Spec.pptx
-AmeriFLUX Data
-.venv
-photon_analysis.py
-init_data_analysis.py
-output.txt
-training_results*
-pruning_results*
-Training Runs
-.DS_Store
-*.swp
+# Ignore everything
+*
+# Except:
+!data_handler.py
+!model_analysis.py
+!model_class.py
+!requirements.txt
+!train.py
+!README.md
+# Unsure if we want an __init__ file
+!__init__.py
