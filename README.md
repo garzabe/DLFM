@@ -51,7 +51,7 @@ The results of the hyperparameter tuning process will be written out in the ```r
 
 ## File Breakdown
 
-### [data_handler.py](https://github.com/garzabe/DLFM/blob/main/data_hander.py)
+### [data_handler.py](https://github.com/garzabe/DLFM/blob/main/data_handler.py)
 
 Data pre-processing steps. Primarily contains just the ```prepare_data()``` function.
 
