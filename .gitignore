@@ -4,6 +4,8 @@ Querying Ecosystem Memory - Project Spec.pdf
 Querying Ecosystem Memory - Project Spec.pptx
 AmeriFLUX Data
 .venv
+photon_analysis.py
+init_data_analysis.py
 output.txt
 training_results*
 pruning_results*

@@ -1,22 +1,22 @@
-### Deep Learning for Flux Modeling (DLFM)
+# Deep Learning for Flux Modeling (DLFM)
 
 ## About:
 
-Motivated by the results in Albert et al., 2017 (*citation*) and other studies incorporating ecosystem memory into modeling ecological fluxes, this project provides a test bed for modeling flux data with machine learning (ML) and deep learning (DL).
+Motivated by the results in Albert et al., 2017 ([doi:10.1007/s00442-017-3853-0](https://doi.org/10.1007/s00442-017-3853-0)) and other studies incorporating ecosystem memory into modeling ecological fluxes, this project provides a test bed for modeling flux data with machine learning (ML) and deep learning (DL).
 
 ## Installation:
 
-This project was built and tested in Python 3.11. It is recommended to install >=3.11, as earlier versions are not guaranteed to work.
+This project was built and tested in Python 3.11. It is recommended to install ```>=3.11```, as earlier versions are not guaranteed to work.
 
 From a terminal/command line, ensure pip is installed and updated:
 
 ``` python3 -m ensurepip --upgrade ```
 
-Clone the repository by either downloading the code zip file or running (requires git to be installed on your computer):
+Clone the repository by either downloading the code zip file or running (requires git to be installed on your machine):
 
 ```git clone https://github.com/garzabe/DLFM```
 
-Optionally, create and activate a virtual environment with ```venv``` or ```conda``` to encapsulate the required packages and versions for this project:
+Optionally, create and activate a virtual environment with ```virtualenv``` or ```conda``` to encapsulate the required packages and versions for this project:
 
 ```
 python3 -m virtualenv ./.venv
@@ -51,13 +51,13 @@ The results of the hyperparameter tuning process will be written out in the ```r
 
 ## File Breakdown
 
-# (data_handler.py)[https://github.com/garzabe/DLFM/data_hander.py]
+### [data_handler.py](https://github.com/garzabe/DLFM/data_hander.py)
 
 Data pre-processing steps. Primarily contains just the ```prepare_data()``` function.
 
 Also includes dataset wrapper classes that enable use with both pyTorch models and sklearn models
 
-# (model_class.py)[https://github.com/garzabe/DLFM/model_class.py]
+### [model_class.py](https://github.com/garzabe/DLFM/model_class.py)
 
 Contains the model architectures and wrapper classes
 
@@ -69,7 +69,7 @@ As of 5/30, contains the following model architectures:
 - LSTM
 - xLSTM
 
-# (train.py)[https://github.com/garzabe/DLFM/train.py]
+### [train.py](https://github.com/garzabe/DLFM/train.py)
 
 Training, testing and evaluation procedures
 
@@ -83,13 +83,11 @@ Training, testing and evaluation procedures
 
 ```plot_predictions.py```: 
 
-# (model_analysis.py)[https://github.com/garzabe/DLFM/model_analysis.py]
+### [model_analysis.py](https://github.com/garzabe/DLFM/model_analysis.py)
 
 Some pre-written analysis procedures in ```plot_sequence_importance()``` and ```variable_importance()``` 
 
 Also includes a default set of hyperparameters for the pre-included model architectures (TODO move this to model_class)
-
-[comment]: # (- ()[https://github.com/garzabe/DLFM/])
 
 ## Model Performance
 
