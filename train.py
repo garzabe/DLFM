@@ -396,6 +396,9 @@ def plot_predictions(file : str, models : list[object], data : AmeriFLUXDataset,
     # Pytorch models will want a Tensor over a numpy array
     X_tensor = [torch.tensor(_X, device=device, dtype=torch.float32) for _X in X]
     for _month_nums, month_label, _x, _X, _X_tensor, _y in zip(month_nums, month_labels, x, X, X_tensor, y):
+        if len(_X) == 0:
+            # no data in this interval
+            continue
         y_predictions = []
         for model in models:
             if model.__class__.__name__ in ['XGBoost', 'RandomForest']:
