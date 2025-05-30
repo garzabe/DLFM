@@ -51,13 +51,13 @@ The results of the hyperparameter tuning process will be written out in the ```r
 
 ## File Breakdown
 
-# [https://github.com/garzabe/DLFM/data_hander.py][data_handler.py]
+# (data_handler.py)[https://github.com/garzabe/DLFM/data_hander.py]
 
 Data pre-processing steps. Primarily contains just the ```prepare_data()``` function.
 
 Also includes dataset wrapper classes that enable use with both pyTorch models and sklearn models
 
-# [https://github.com/garzabe/DLFM/model_class.py][model_class.py]
+# (model_class.py)[https://github.com/garzabe/DLFM/model_class.py]
 
 Contains the model architectures and wrapper classes
 
@@ -69,7 +69,7 @@ As of 5/30, contains the following model architectures:
 - LSTM
 - xLSTM
 
-# [https://github.com/garzabe/DLFM/train.py][train.py]
+# (train.py)[https://github.com/garzabe/DLFM/train.py]
 
 Training, testing and evaluation procedures
 
@@ -83,13 +83,13 @@ Training, testing and evaluation procedures
 
 ```plot_predictions.py```: 
 
-# [https://github.com/garzabe/DLFM/][model_analysis.py]
+# (model_analysis.py)[https://github.com/garzabe/DLFM/model_analysis.py]
 
 Some pre-written analysis procedures in ```plot_sequence_importance()``` and ```variable_importance()``` 
 
 Also includes a default set of hyperparameters for the pre-included model architectures (TODO move this to model_class)
 
-[comment]: # (- [https://github.com/garzabe/DLFM/][])
+[comment]: # (- ()[https://github.com/garzabe/DLFM/])
 
 ## Model Performance
 
