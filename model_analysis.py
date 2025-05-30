@@ -137,8 +137,8 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
     if use_stat_interval:
         sequence_args['time_series'] = False
     
-    sequence_lengths = list(range(1, max_sequence_length+1))
-    for sl in range(1, max_sequence_length+1):
+    sequence_lengths = list(range(1, max_sequence_length+1, 2))
+    for sl in sequence_lengths:
         sl_arg = {'stat_interval' if use_stat_interval else 'sequence_length': sl}
         iter = []
         for _ in range(num_models):
@@ -256,7 +256,7 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
     # either show dates on the x-axis or show input values
     show_dates = False
     # either show a scatterplot or shows stats on the partials
-    scatter = True
+    scatter = False
     
     partials = {}
     inputs = {}
@@ -401,24 +401,26 @@ me6_input_column_set = [
 def main():
     SITE = Site.Me2
     COLUMNS = me2_input_column_set
-    MAX_SEQUENCE_LENGTH=45
+    MAX_SEQUENCE_LENGTH=90
     sequence_lengths = [1,2,3,4,5,6,7,14,31,90]
     n_folds = 5
-    n_models = 20
+    n_models = 5
 
-    model_class = XGBoost
-    flatten = True
+    model_class = LSTM
+    flatten = False
     hparams : dict[str, str | int] = default_hparams[model_class]
-    #hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH})
-    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,3)), **hparams)
+    hparams.update({'lr':0.01, 'epochs':500, 'hidden_state_size': 8, 'num_layers': 3, 'dropout':0.001, 'weight_decay':0.001})
+    plot_sequence_importance(SITE, COLUMNS, LSTM, num_models=10, max_sequence_length=MAX_SEQUENCE_LENGTH, **hparams)
+    #hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH, 'lr':0.01, 'epochs':500, 'hidden_state_size':8, 'num_layers':3, 'dropout':0.001, 'weight_decay':0.001})
+    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,30)), **hparams)
     #variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
-    for s in sequence_lengths:
-        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-    model_class = RandomForest
-    flatten = True
-    hparams : dict[str, str | int] = default_hparams[model_class]
-    for s in sequence_lengths:
-        train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+    # for s in sequence_lengths:
+    #     train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
+    # model_class = RandomForest
+    # flatten = True
+    # hparams : dict[str, str | int] = default_hparams[model_class]
+    # for s in sequence_lengths:
+    #     train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
     # train
    #h = default_hparams[DynamicANN]
    # h.update({'lr': 0.01, 'epochs': 10000, 'flatten' : True})
