@@ -160,9 +160,6 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
 
     ### Arguments for building time series data
 
-    # Rolling window statistics for use with DynamicANN and other non-sequence models
-    stat_interval = kwargs.get('stat_interval', None)
-
     # Sequence length (in days) of the time series inputs - can range from 1 - ~200 days
     sequence_length = kwargs.get('sequence_length', None)
 
@@ -173,6 +170,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
 
     # Flatten time series data - useful for non-sequence models
     flatten = kwargs.get('flatten', False)
+    # Rolling window statistics for use with DynamicANN and other non-sequence models
+    stats = kwargs.get('stats', False)
 
     # defines the method of handling low ustar entries: current possible values are: drop, na
     ustar = kwargs.get('ustar', 'na') 
@@ -212,9 +211,9 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     df = df.drop(columns=[target_col])
 
     # get rolling window average and variance
-    if stat_interval is not None:
+    if stats:
         for col in input_columns:
-            rolling_series = df[col].rolling(window=48*stat_interval, min_periods=5*stat_interval)
+            rolling_series = df[col].rolling(window=48*sequence_length, min_periods=5*sequence_length)
             df[col+'_rolling_var'] = rolling_series.var()
             df[col+'_rolling_avg'] = rolling_series.mean()
 
@@ -478,35 +477,46 @@ def get_dataset_size_diff(site_name, input_columns: list[str], col:str, sequence
 
     print(f"Removing {col} increases the dataset by {size_without - size_with} ({size_with} -> {size_without})")
 
-if __name__=='__main__':
-    from model_analysis import me2_input_column_set
-    import matplotlib.pyplot as plt
-    # train, eval = prepare_data(Site.Me2, me2_input_column_set, sequence_length=1, interpolate=False)
-    # size_without = len(train) + len(eval)
-    # train, eval = prepare_data(Site.Me2, me2_input_column_set, sequence_length=1, interpolate=True)
-    # size_with = len(train) + len(eval)
-    # print(f"Interpolation increases dataset from {size_without} to {size_with}")
-    
-    sl = [1,2,3,4,5,6,7,14,21,31,62,91,182, 365]
-    sizes = []
-    for i in sl:
-        train, eval = prepare_data(Site.Me2, me2_input_column_set, sequence_length=i)
-        if train is not None and eval is not None:
-            sizes.append(len(train) + len(eval))
-        else:
-            sizes.append(0)
+COLUMN_LABELS = {'CO2': {'title':'Carbon Dioxide Content', 'y_label':'Mol fraction (umolCO2 mol-1)'},
+                'H20': {'title':'Water Content', 'y_label':'Mol fraction (mmolH2O mol-1)'},
+                'CH4': {'title':'Methane Content', 'y_label':'Mol fraction (nmolCH4 mol-1)'},
+                'FC': {'title':'Carbon Dioxide Flux', 'y_label':'Flux (umolCO2 m-2 s-1)'},
+                'SC': {'title':'Carbon Dioxide Storage Flux', 'y_label':'Flux (umolCO2 m-2 s-1)'},
+                'FCH4': {'title':'Methane Flux', 'y_label':'Flux (nmolCH4 m-2 s-1)'},
+                'SCH4': {'title':'Methane Storage Flux', 'y_label':'Flux (nmolCH4 m-2 s-1)'},
+                'G': {'title':'Soil Heat Flux', 'y_label':'Heat Flux (W m-2)'},
+                'H': {'title':'Sensible Heat Flux', 'y_label':'Heat Flux (W m-2)'},
+                'LE': {'title':'Latent Heat Flux', 'y_label':'Heat Flux (W m-2)'},
+                'SH': {'title':'Air Heat Storage', 'y_label':'Heat Flux (W m-2)'},
+                'SLE': {'title':'Latent Heat Storage Flux', 'y_label':'Heat Flux (W m-2)'},
+                'WD': {'title':'Wind Direction', 'y_label':'Direction (deg)'},
+                'WS': {'title':'Wind Speed', 'y_label':'Speed (m s-1)'},
+                'USTAR': {'title':'Friction Velocity', 'y_label':'Speed (m s-1)'},
+                'ZL': {'title':'Stability Param', 'y_label':''},
+                'PA': {'title':'Atmospheric Pressure', 'y_label':'Pressure (kPa)'},
+                'RH': {'title':'Relative Humidity', 'y_label':'Percent Humidity (%)'},
+                'TA': {'title':'Air Temperature', 'y_label':'Temperature (deg C)'},
+                'VPD': {'title':'Vapor Pressure Deficit', 'y_label':'Pressure (hPa)'},
+                'SWC': {'title':'Soil Water Content', 'y_label':'Percent Water Content (%)'},
+                'TS': {'title':'Soil Temperature', 'y_label':'Temperature (deg C)'},
+                'WTD': {'title':'Water Table Depth', 'y_label':'Depth (m)'},
+                'NETRAD': {'title':'Net Radiation', 'y_label':'Radiation (W m-2)'},
+                'PPFD_IN': {'title':'Incoming Photon Flux Density', 'y_label':'Flux Density (umolP m-2 s-1)'},
+                'PPFD_OUT': {'title':'Outgoing Photon Flux Density', 'y_label':'Flux Density (umolP m-2 s-1)'},
+                'SW_IN': {'title':'Incoming Shortwave Radiation', 'y_label':'Flux (W m-2)'},
+                'SW_OUT': {'title':'Outgoing Shortwave Radiation', 'y_label':'Flux (W m-2)'},
+                'LW_IN': {'title':'Incoming Longwave Radiation', 'y_label':'Flux (W m-2)'},
+                'LW_OUT': {'title':'Outgoing Longwave Radiation', 'y_label':'Flux (W m-2)'},
+                'P': {'title':'Precipitation', 'y_label':'Precipitation Height (mm)'},
+                'NEE': {'title':'Net Ecosystem Exchange', 'y_label':r'Flux Density ($\mu$mol $m^{-2} s^{-1}$)'},
+                'NEP': {'title':'Net Ecosystem Productivity', 'y_label':'NEP ($\mu$mol $m^{-2} s^{-1}$)'},
+                'RECO': {'title':'Ecosystem Respiration', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
+                'GPP': {'title':'Gross Primary Productivity', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
+                'D_SNOW': {'title': 'Snow Depth', 'y_label':'Snow Depth (in)'},
+                }
 
-    for l, size in zip(sl, sizes):
-        print(f"{l}: {size}")
-
-    # # ideally, only the first L datapoints are removed from the dataset
-    # # for not having enough antecedent data
-    # ideal_sizes = [sizes[0]-l for l in sl]
-    # plt.plot(sl, ideal_sizes, 'g', label='Ideal Dataset Size')
-    # plt.plot(sl, sizes, 'b', label='Dataset Size')
-    # plt.plot(sl, [0]*len(sl), 'k--')
-    # plt.legend()
-    # plt.title('Dataset Size After Preparation')
-    # plt.xlabel('Sequence Length (days)')
-    # plt.ylabel('Dataset Size')
-    # plt.show()
+def find_prefix(var_name : str):
+    for var_prefix in COLUMN_LABELS.keys():
+        if var_prefix in var_name:
+            return var_prefix
+    return var_name

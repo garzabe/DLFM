@@ -12,16 +12,6 @@ from sklearn.metrics import mean_squared_error
 # plot_predictions uses this to determine what hyperparameters to write in the subtitle
 # train_test_eval uses this similarly, to determine how to build the history table
 
-MODEL_HYPERPARAMETERS : dict[str, dict[str, int | tuple[int] | Callable | None]] = {
-    'XGBoost' : {'lr' : 0.01, 'n_estimators' : 1000, 'sequence_length': None, 'stat_interval': None},
-    'RandomForest' : {'n_estimators' : 100, 'sequence_length': None, 'stat_interval': None},
-    'FirstANN' : {'epochs' : 300, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'stat_interval' : None, 'sequence_length' : None, 'weight_decay': 0.0, 'momentum': 0.0},
-    'DynamicANN' : {'layer_dims' : (6,6), 'epochs' : 300, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'stat_interval' : None, 'sequence_length' : None, 'weight_decay': 0.0, 'momentum': 0.0},
-    'RNN' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 800, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
-    'LSTM' : {'hidden_state_size' : 8, 'num_layers' : 1, 'epochs' : 800, 'batch_size' : 64, 'activation_fn' : nn.ReLU, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0},
-    'xLSTM' : {'epochs' : 500, 'batch_size' : 64, 'lr' : 0.001, 'sequence_length' : 14, 'dropout' : 0.0, 'weight_decay': 0.0, 'momentum': 0.0}
-}
-
 # each class should have an __init__
 class NEPModel(nn.Module, ABC):
 
@@ -246,20 +236,6 @@ class xLSTM(NEPModel):
         return y
 
 
-
-
-            
-        
-        
-
-        
-
-
-
-
-
-
-
 #-------------------------
 class XGBoost():
     def __init__(self, lr=None, n_estimators=None, **kwargs):
@@ -302,3 +278,15 @@ class RandomForest():
     
     def __str__(self):
         return str(self.model)
+    
+
+# Default hyperparameter combinations to search when tuning
+MODEL_HYPERPARAMETERS : dict[object, dict[str, int | tuple[int] | list | None]] = {
+    FirstANN: {'batch_size': 64, 'epochs': 800, 'lr': 0.001, 'weight_decay': 0.01, 'momentum':0},
+    DynamicANN: {'layer_dims': [(6,4), (10,6)], 'epochs': [400, 800], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001], 'momentum':0}, #32C
+    RNN: {'hidden_state_size': 15, 'num_layers': 1, 'epochs': 2000, 'batch_size': 64, 'lr': 0.001, 'weight_decay': 0.01, 'momentum':0}, # [8, 15]
+    LSTM: {'hidden_state_size': [8,15], 'num_layers': [2,3], 'epochs': [500, 2200], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001],'momentum': 0.00}, # 64C
+    xLSTM: {'epochs': [300, 600, 1000], 'batch_size': 64, 'lr': [0.001, 0.01], 'weight_decay': [0.0, 0.001], 'momentum':0}, # 12C
+    XGBoost: {'lr': 0.01, 'n_estimators': [1000, 10000]}, # 2C
+    RandomForest: {'n_estimators': [1000, 10000]}
+} # 2C

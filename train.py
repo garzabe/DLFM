@@ -215,7 +215,8 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
     
     sklearn_model = model_name=='XGBoost' or model_name=='RandomForest'
 
-    model_hparams = MODEL_HYPERPARAMETERS[model_name]
+    model_hparams = MODEL_HYPERPARAMETERS[model_class]
+    sequence_length = kwargs.get('sequence_length', 1)
     
     skip_eval = kwargs.get('skip_eval', False)
     skip_curve = kwargs.get('skip_curve', False)
@@ -228,7 +229,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
     loss_fn = nn.MSELoss()
 
     # Construct the test combinations to test
-    data_hparams = ['sequence_length', 'stat_interval']
+    data_hparams = ['sequence_length']
     hparam_lists = []
     data_hparam_lists = []
     for hparam, default in model_hparams.items():
@@ -304,6 +305,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
                                 candidate.get('batch_size', -1),
                                 candidate.get('epochs', -1),
                                 loss_fn, train_data, device, num_features*data_candidate['sequence_length'] if time_series and flatten else num_features,
+                                sequence_length=sequence_length,
                                 **candidate_subset, **data_candidate)
                 history.append(candidate | data_candidate | {'train_size' : len(train_data)})
                 history[-1]['r2'] = r2
@@ -335,7 +337,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
             y = train_data.get_y()
             model.fit(X, y)
         else:
-            model : NEPModel = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, **best, **data_best).to(device)
+            model : NEPModel = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, sequence_length=sequence_length, **best, **data_best).to(device)
             if i==0:
                 print(model)
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest
