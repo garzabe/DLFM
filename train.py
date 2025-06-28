@@ -26,7 +26,8 @@ HYPERPARAMETER_NAMES = {
     'dropout' : {'title' : 'Dropout', 'abbreviation' : 'D'},
     'n_estimators' : {'title': 'Number Estimators', 'abbreviation': 'NE'},
     'weight_decay' : {'title': 'Weight Decay', 'abbreviation': 'WD'},
-    'momentum' : {'title': 'Momentum', 'abbreviation': 'M'}
+    'momentum' : {'title': 'Momentum', 'abbreviation': 'M'},
+    'max_depth': {'title': 'Max Tree Depth', 'abbreviation': 'MD'}
 }
 
 ##### Base Train, Test, Eval functions #######
@@ -217,12 +218,13 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
 
     model_hparams = MODEL_HYPERPARAMETERS[model_class]
     sequence_length = kwargs.get('sequence_length', 1)
+    doy = kwargs.get('doy', False)
     
     skip_eval = kwargs.get('skip_eval', False)
     skip_curve = kwargs.get('skip_curve', False)
     flatten = kwargs.get('flatten', False)
 
-    time_series = True if model_name in ['RNN', 'LSTM'] or 'sequence_length' in kwargs.keys() else False
+    is_rnn = True if model_name in ['RNN', 'LSTM', 'xLSTM'] else False
     
     # 2. Initialize the model
     device = ("cuda" if torch.cuda.is_available() else "cpu")
@@ -283,14 +285,11 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
             for key, val in data_candidate.items():
                 hparam_print += f"{HYPERPARAMETER_NAMES[key]['title']}: {val}\n"
             
-            if time_series:
-                train_data, _ = prepare_data(site, input_columns, **data_candidate, **kwargs)
-            else:
-                train_data, _ = prepare_data(site, input_columns, **data_candidate, **kwargs)
+            train_data, _ = prepare_data(site, input_columns, **data_candidate, **kwargs)
             if train_data == None or len(train_data) == 0: # or train_data.get_num_years() <= 1:
                 print("Training set does not have enough data. Skipping this candidate...")
                 continue
-            num_features = len(input_columns)*(3 if not time_series and 'stat_interval' in data_candidate.keys() and data_candidate['stat_interval'] is not None else 1)
+            num_features = len(input_columns)*(3 if not is_rnn and not flatten else 1)
             for candidate in candidates:
                 candidate_suffix = ''
                 for key, val in candidate.items():
@@ -300,11 +299,14 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
                 candidate_subset.pop('lr', None)
                 candidate_subset.pop('batch_size', None)
                 candidate_subset.pop('epochs', None)
+                n_features = num_features*sequence_length if not is_rnn and flatten else num_features
+                if doy:
+                    n_features += 1
                 r2, loss = train_kfold(min(num_folds, train_data.get_num_years()), model_class,
                                 candidate.get('lr', -1),
                                 candidate.get('batch_size', -1),
                                 candidate.get('epochs', -1),
-                                loss_fn, train_data, device, num_features*data_candidate['sequence_length'] if time_series and flatten else num_features,
+                                loss_fn, train_data, device, n_features,
                                 sequence_length=sequence_length,
                                 **candidate_subset, **data_candidate)
                 history.append(candidate | data_candidate | {'train_size' : len(train_data)})
@@ -325,19 +327,19 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
     # 3. Train with final hparam selections
     models = []
     print(f"Training the best performing model on the entire training set {num_models} times")
-    num_features = len(input_columns)*(3 if not time_series and 'stat_interval' in data_best.keys() and data_best['stat_interval'] is not None else 1)
+    num_features = len(input_columns)*(3 if not is_rnn and not flatten else 1)
     for i in range(num_models):
-        if time_series:
-            train_data, eval_data = prepare_data(site, input_columns, **data_best, **kwargs)
-        else:
-            train_data, eval_data = prepare_data(site, input_columns, **data_best, **kwargs)
+        train_data, eval_data = prepare_data(site, input_columns, **data_best, **kwargs)
         if sklearn_model:
             model : XGBoost | RandomForest = model_class(**best, **data_best)
             X = train_data.get_X()
             y = train_data.get_y()
             model.fit(X, y)
         else:
-            model : NEPModel = model_class(num_features*data_best['sequence_length'] if time_series and flatten else num_features, sequence_length=sequence_length, **best, **data_best).to(device)
+            n_features = num_features*data_best['sequence_length'] if not is_rnn and flatten else num_features
+            if doy:
+                n_features += 1
+            model : NEPModel = model_class(n_features, sequence_length=sequence_length, **best, **data_best).to(device)
             if i==0:
                 print(model)
             train_loader = DataLoader(train_data, batch_size=best['batch_size'], drop_last=True) # as long as we are using Adam, maybe want to drop the last batch if it is smaller than the rest
@@ -474,6 +476,11 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
     sklearn_model = model_name in ['XGBoost', 'RandomForest']
     time_series = True if model_name in ['LSTM', 'RNN'] or 'sequence_length' in kwargs.keys() else False
 
+    # If no columns given, default to this set
+    if input_columns is None:
+        input_columns = ['D_SNOW', 'P', 'PPFD_IN', 'NETRAD']
+ 
+
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
     final_models, hparams, history = train_hparam(model_class, site, input_columns, **kwargs)
     if len(final_models) == 0:
@@ -528,6 +535,7 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
         f.write("### K-Fold Cross-Validation History\n\n")
         f.write(f'## {model_name}\n\n')
         f.write(f"Folds: {num_folds}\n\n")
+        f.write(f"Sequence Length: {kwargs.get('sequence_length', 1)}\n\n")
 
         table_head = '|'
         head_border = '|'

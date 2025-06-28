@@ -117,9 +117,9 @@ def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=No
                     weight_decay=weight_decay,
                     time_series=True)
     
-def variable_importance(site, input_columns, model_class, var_names : list[str], timesteps=None, **model_kwargs):
+def variable_importance(site, input_columns, model_class, var_names : list[str], timesteps : list[int] =[1], sequence_length=1, **model_kwargs):
     # train a model
-    models, best, history = train_hparam(model_class, site, input_columns, skip_eval=False, skip_curve=False, **model_kwargs)
+    models, best, history = train_hparam(model_class, site, input_columns, skip_eval=False, skip_curve=False, sequence_length=sequence_length, **model_kwargs)
     device = ("cuda" if cuda.is_available() else "cpu")
 
     # given the var_name input (and potentially the time step), calculate the partial derivatives
@@ -128,7 +128,7 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
     # we need to prepare data and go as far as preparing the dataloader here to have the exact tensors
     # that are tied to the outputs
     # is grads batched allows for batch gradient calculation
-    train, _ = prepare_data(site, input_columns, **model_kwargs)
+    train, _ = prepare_data(site, input_columns, sequence_length=sequence_length, **model_kwargs)
     vars_idx = [train.get_var_idx(var_name) for var_name in var_names]
     dates : list[datetime] = train.get_dates()
     dataloader = DataLoader(train, batch_size=1, shuffle=False)
@@ -244,14 +244,38 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
             plt.show()
     else:
         plt.clf()
-        for var_name in var_partials.keys():
+        var_names.sort(key=lambda v: var_partials[v][0], reverse=True)
+        max_var = max([var_partials[v][0] for v in var_names])
+        # get a plot with each variable isolated
+        for var_name in var_names:
             var_prefix = find_prefix(var_name)
+            # create hidden plot for each other variable
+            for v in var_names:
+                if v==var_name:
+                    plt.plot(timesteps, var_partials[var_name], label=COLUMN_LABELS[var_prefix]['title'])
+                else:
+                    v_p = find_prefix(v)
+                    plt.plot(timesteps, [-1]*len(timesteps), label=COLUMN_LABELS[v_p]['title'])
+
+            
+            plt.xlabel('Days before prediction')
+            plt.ylabel(f'Variance of Partial Derivatives of NEP Prediction')
+            plt.xticks(list(range(0, max(timesteps)+1, max(timesteps) // 10)))
+            plt.ylim(bottom=-0.02, top=max_var*1.2)
+            plt.legend()
+            plt.show()    
+        for var_name in var_names:
+            var_prefix = find_prefix(var_name)
+            # create hidden plot for each other variable
             plt.plot(timesteps, var_partials[var_name], label=COLUMN_LABELS[var_prefix]['title'])
-        #plt.yscale('log')
         plt.xlabel('Days before prediction')
         plt.ylabel(f'Variance of Partial Derivatives of NEP Prediction')
         plt.xticks(list(range(0, max(timesteps)+1, max(timesteps) // 10)))
+        plt.ylim(bottom=-0.02, top=max_var*1.2)
         plt.legend()
+        plt.show()         
+        #plt.yscale('log')
+        
         plt.show()
 
     return var_partials
@@ -286,43 +310,18 @@ me6_input_column_set = [
 def main():
     SITE = Site.Me2
     COLUMNS = me2_input_column_set
-    MAX_SEQUENCE_LENGTH=90
-    sequence_lengths = [1,2,3,4,5,6,7,14,31,90]
+    MAX_SEQUENCE_LENGTH=120
+    sequence_lengths = [3,4,5,6,7,14,31,90]
     n_folds = 3
-    n_models = 20
+    n_models = 1
 
-    model_class = xLSTM
+    model_class = LSTM
     flatten = False
     hparams : dict[str, str | int] = MODEL_HYPERPARAMETERS[model_class]
-    hparams.update({'lr':0.001, 'epochs':[1100,1200]})#, 'hidden_state_size': 15, 'num_layers': 2, 'dropout':0, 'weight_decay':0.001})
-    train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=90, flatten=flatten, **hparams)
-    hparams.update({'lr':0.01, 'epochs':[200,300]})#, 'hidden_state_size': 15, 'num_layers': 2, 'dropout':0, 'weight_decay':0.001})
-    train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=90, flatten=flatten, **hparams)
-    #plot_sequence_importance(SITE, COLUMNS, LSTM, num_models=1, max_sequence_length=MAX_SEQUENCE_LENGTH, **hparams)
-    #hparams.update({'sequence_length': MAX_SEQUENCE_LENGTH, 'lr':0.01, 'epochs':500, 'hidden_state_size':8, 'num_layers':3, 'dropout':0.001, 'weight_decay':0.001})
-    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,30)), **hparams)
-    #variable_importance(SITE, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, model_class, {'PPFD_IN', 'D_SNOW', 'TA_1_1_2'}, timesteps=list(range(1,MAX_SEQUENCE_LENGTH)), **hparams)
-    # for s in sequence_lengths:
-    #     train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-    # model_class = RandomForest
-    # flatten = True
-    # hparams : dict[str, str | int] = default_hparams[model_class]
-    # for s in sequence_lengths:
-    #     train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-    # train
-   #h = default_hparams[DynamicANN]
-   # h.update({'lr': 0.01, 'epochs': 10000, 'flatten' : True})
-    #train_test_eval(DynamicANN, SITE, COLUMNS, sequence_length=5, **h)
-    # layer_dims = [(6,4), (10,6), (12,8)]
-    # for ld in layer_dims:
-    #     hparams.update({'layer_dims': ld})
-    #     hparams.update({'lr':0.01, 'epochs':300})
-    #     for s in sequence_lengths:
-    #         train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-    #     hparams.update({'lr':0.001, 'epochs':1000})
-    #     for s in sequence_lengths:
-    #         train_test_eval(model_class, SITE, COLUMNS, num_models=n_models, num_folds=n_folds, sequence_length=s, flatten=flatten, **hparams)
-    #plot_sequence_importance(SITE, COLUMNS, LSTM, num_models=20, max_sequence_length=MAX_SEQUENCE_LENGTH, **default_hparams[LSTM])
+    hparams.update({'lr':0.001, 'epochs':2500, 'hidden_state_size': 8, 'num_layers': 3, 'dropout': 0.00, 'weight_decay': 0.00})
+
+    variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), sequence_length=MAX_SEQUENCE_LENGTH, **hparams)
+
 
 
 

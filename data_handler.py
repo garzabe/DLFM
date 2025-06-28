@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import tqdm
 import bisect
 import datetime
+import re
 
 Site = Enum('Site', ['Me2', 'Me6'])
 
@@ -156,7 +157,7 @@ def get_site_vars(site : Site):
     data = get_data(site)
     return data.columns.to_list()
 
-def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_data(site_name : Site, input_columns : list[str], eval_years : int = 3, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
 
     ### Arguments for building time series data
 
@@ -190,6 +191,7 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
 
     time_series = sequence_length is not None
     peak_NEE = kwargs.get('peak_NEE', False)
+    doy = kwargs.get('doy', False)
 
     # in the case we are using match_sequence_length, first get the set of prediction dates for the target dataset
     match_dates_train = None
@@ -205,8 +207,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     
     # reduce the columns to our desired feature set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
-    if input_columns is not None:
-        df = df[['TIMESTAMP_START', *input_columns, 'USTAR', target_col]]
+    # if no input columns given, use a default set that is (generally) guaranteed to exist in the dataset
+    df = df[['TIMESTAMP_START', *input_columns, 'USTAR', target_col]]
     df["NEE"] = df[target_col]
     df = df.drop(columns=[target_col])
 
@@ -357,6 +359,8 @@ def prepare_data(site_name : Site, input_columns, eval_years : int = 3, **kwargs
     _df["DAY"] = df_X_y["DAY"]
     _df["NEE"] = df_X_y["NEE"]
     _df["SEASON_YEAR"] = df_X_y['SEASON_YEAR']
+    if doy:
+        _df["DOY"] = (_df["DAY"].dt.day_of_year - 183)/105.66
 
     vars = pd.DataFrame(_df.drop(columns=['SEASON_YEAR', 'DAY', 'NEE'])).columns.to_list()
 
@@ -517,6 +521,8 @@ COLUMN_LABELS = {'CO2': {'title':'Carbon Dioxide Content', 'y_label':'Mol fracti
 
 def find_prefix(var_name : str):
     for var_prefix in COLUMN_LABELS.keys():
-        if var_prefix in var_name:
+        #if var_prefix in var_name:
+        #    return var_prefix
+        if re.match(rf'^{var_prefix}', var_name):
             return var_prefix
     return var_name

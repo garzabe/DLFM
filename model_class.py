@@ -240,6 +240,7 @@ class xLSTM(NEPModel):
 class XGBoost():
     def __init__(self, lr=None, n_estimators=None, **kwargs):
         model_kwargs = {'eval_metric': mean_squared_error}#, 'early_stopping_rounds': epochs}
+        model_kwargs['max_depth'] = kwargs.get('max_depth', None)
         if lr is not None:
             model_kwargs['learning_rate'] = lr
         if n_estimators is not None:
@@ -262,6 +263,7 @@ class XGBoost():
 class RandomForest():
     def __init__(self, n_estimators=None, **kwargs):
         model_kwargs = {}
+        model_kwargs['max_depth'] = kwargs.get('max_depth', None)
         if n_estimators is not None:
             model_kwargs['n_estimators'] = n_estimators
         # TODO: process kwargs for randomforest relevant kwargs
@@ -288,5 +290,5 @@ MODEL_HYPERPARAMETERS : dict[object, dict[str, int | tuple[int] | list | None]] 
     LSTM: {'hidden_state_size': [8,15], 'num_layers': [2,3], 'epochs': [500, 2200], 'batch_size': 64, 'lr': [0.01, 0.001], 'weight_decay': [0.0, 0.001], 'dropout':[0.0, 0.001],'momentum': 0.00}, # 64C
     xLSTM: {'epochs': [300, 600, 1000], 'batch_size': 64, 'lr': [0.001, 0.01], 'weight_decay': [0.0, 0.001], 'momentum':0}, # 12C
     XGBoost: {'lr': 0.01, 'n_estimators': [1000, 10000]}, # 2C
-    RandomForest: {'n_estimators': [1000, 10000]}
+    RandomForest: {'n_estimators': [1000, 2000], 'max_depth': [10, 30]}
 } # 2C
