@@ -41,11 +41,11 @@ Finally, download your favorite flux dataset ```.csv``` and place it in the ```d
 
 ## Quick Start
 
-TODO: How do we want users to simply specify their dataset file? Force them to rename to data.csv or have a config file/constant variable file where they can copy the filename?
-
 Run the following command to train an LSTM on your flux dataset with ***default input variables*** inputs and NEP output:
 
 ```python3 model_analysis.py```
+
+NOTE: By default, the procedure looks for data in the filepath ```data/data.csv```. If your csv has a different name, either rename it to ```data.csv``` or change the ```data_filepath``` variable in the main function.
 
 The results of the hyperparameter tuning process will be written out in the ```results``` directory. Example predictions on the training set and evaluation set and training curves will be written out in the ```images``` directory.
 
@@ -53,15 +53,20 @@ The results of the hyperparameter tuning process will be written out in the ```r
 
 ### [data_handler.py](https://github.com/garzabe/DLFM/blob/main/data_handler.py)
 
-Data pre-processing steps. Primarily contains just the ```prepare_data()``` function.
+Defines the ```AmeriFLUXDataset``` classes and ```prepare_data()``` function.
 
-Also includes dataset wrapper classes that enable use with both pyTorch models and sklearn models
+The ```AmeriFLUXDataset``` class is a wrapper of the ```torch.utils.data.Dataset``` class used for PyTorch projects that is compatible with Sci-Kit Learn projects. Data can be directly accessed with the ```get_X()``` and ```get_y()``` functions.
 
 ### [model_class.py](https://github.com/garzabe/DLFM/blob/main/model_class.py)
 
-Contains the model architectures and wrapper classes
+Contains the PyTorch and sklearn model architecture classes.
 
-As of 5/30, contains the following model architectures:
+All PyTorch model architectures are templated from ```NEPModel``` which only requires a ```forward(x)``` function, which acts similarly to the callable ```__call__``` function.
+
+All SKLearn model architectures are templated from ```SKLModel``` which requires implementation of ```fit(X,y)```, ```predict(X)```, and ```__str___()```.
+
+
+As of 6/28, ```model_class.py``` has the following model architectures implemented:
 
 - XGBoost
 - RandomForest
@@ -73,21 +78,62 @@ As of 5/30, contains the following model architectures:
 
 Training, testing and evaluation procedures
 
-```train_test_eval.py```:
+#### ```train_test_eval(model_class, site, input_columns, **kwargs)```
 
-```train_hparam.py```:
+The primary procedure for training new models. Calls ```train_hparam()``` to tune hyperparameters and train the model(s) with optimal hyperparameters, and evaluates the performance. Shows example predictions on the evaluation dataset with ```plot_predictions()``` and records hyperparameter tuning and evaluation results in the ```results``` directory.
 
-```train_test.py```:
+Accepted kwargs:
 
-```train_kfold.py```:
+- num_folds: The number of folds to use in K-fold cross validation
+- skip_eval: Whether to skip the example prediction and evaluation procedures
+- skip_curve: Whether to skip plotting training curves for each final model trained
 
-```plot_predictions.py```: 
+#### ```train_hparam(model_class, site, input_columns, **kwargs)```
+
+ Performs a grid search hyperparameter tuning procedure and trains model(s) with the optimal hyperparameter set.
+
+Accepted kwargs:
+- num_folds:
+- num_models: The number of models to train with optimal hyperparameters
+- optimizer_class: The PyTorch optimizer class to use for training. Defaults to Stochastic Gradient Descent SGD
+- doy: Whether to include the day-of-year (1-366) as an input variable to the model
+- skip_eval:
+- skip_curve:
+- flatten: Whether to flatten the 2-dimensional time series data on the temporal dimension for non-RNN models
+
+#### ```train_kfold(num_folds, model_class, lr, bs, epochs, train_data, device, num_features, weight_decay=0, momentum=0, optimizer_class=torch.optim.SGD, **model_kwargs)```
+
+The K-fold cross validation procedure for a given hyperparameter set. Trains models up to ```num_folds``` times depending on data availability. Returns the average R-squared explainability and mean squared error (MSE) among all successful folds.
+
+Folds are determined by calendar year - this means that it is only possible to cross validate on as many folds as there are calendar years in the dataset. In addition, if a fold's validation set has fewer than $200 - \lfloor \sqrt{80 \times l} \rfloor$, where $l$ is the input sequence length, it is skipped. 
+
+#### ```train_test(train_dataloader, test_dataloader, model, epochs, loss_fn, optimizer, device, skip_curve=False, context=None)```
+
+Given training and validation datasets, trains and validates a model. If skip_curve is False, plots the training curve for the model as well. Returns a full history of the training and validation procedure.
+
+
+
+#### ```plot_predictions.py```
+
+
+
 
 ### [model_analysis.py](https://github.com/garzabe/DLFM/blob/main/model_analysis.py)
 
-Some pre-written analysis procedures in ```plot_sequence_importance()``` and ```variable_importance()``` 
+The main file where model-data analysis is done. Includes pre-written analysis procedures in ```plot_sequence_importance()``` and ```variable_importance()```:
 
-Also includes a default set of hyperparameters for the pre-included model architectures (TODO move this to model_class)
+#### ```plot_sequence_importance(site, input_columns, model_class, num_models=5, max_sequence_length=90, flatten=False, **kwargs)```
+
+To determine the prevalence of ecosystem memory in a model architecture, we train models on inputs with varying sequence lengths and compare prediction performance. With all other parameters remaining constant, any improvement in prediction performance as the sequence length increases can potentially be attributed to a better model of ecosystem memory.
+
+Given a set of hyperparameters in ```kwargs```, trains ```num_models``` models with sequence lengths from 1 day to ```max_sequence_length``` days. After training all models, plots the average performance (R-squared and MSE) on training and evaluation sets with 95% confidence intervals against time.
+
+#### ```variable_importance(site, input_columns, model_class, var_names, timesteps=[1], sequence_length=1, **model_kwargs)```
+
+When we provide an RNN time-series inputs for a prediction on the final day of the sequence, we would like to understand how *important* the previous inputs are to the final prediction. Our approach here is to observe the variance of partial derivatives of the prediction with respect to individual inputs under the assumption that weight parameters tied to *important* inputs will diverge from 0 during the training process and result in variance in the partial derivative.
+
+Trains a single model with the given sequence length and for each evaluation datapoint,variable, and timestep in ```timesteps```, calculates the partial derivative of predicted NEP with respect to the input and the variance with respect to each variable-timestep. Variances are plotted against timesteps.
+
 
 ## Model Performance
 

@@ -237,7 +237,23 @@ class xLSTM(NEPModel):
 
 
 #-------------------------
-class XGBoost():
+class SKLModel():
+    @abstractmethod
+    def fit(self, X, y):
+        pass
+
+    @abstractmethod
+    def predict(self, X):
+        pass
+
+    def __call__(self, X):
+        return self.predict(X)
+    
+    @abstractmethod
+    def __str__(self):
+        pass
+
+class XGBoost(SKLModel):
     def __init__(self, lr=None, n_estimators=None, **kwargs):
         model_kwargs = {'eval_metric': mean_squared_error}#, 'early_stopping_rounds': epochs}
         model_kwargs['max_depth'] = kwargs.get('max_depth', None)
@@ -254,13 +270,13 @@ class XGBoost():
         return self.model.predict(X)
     
     # allows the model to be used as a callable simiar to nn.Module
-    def __call__(self, X):
-        return self.model.predict(X)
+    #def __call__(self, X):
+    #    return self.model.predict(X)
     
     def __str__(self):
         return str(self.model)
     
-class RandomForest():
+class RandomForest(SKLModel):
     def __init__(self, n_estimators=None, **kwargs):
         model_kwargs = {}
         model_kwargs['max_depth'] = kwargs.get('max_depth', None)
@@ -275,8 +291,8 @@ class RandomForest():
     def predict(self, X):
         return self.model.predict(X)
     
-    def __call__(self, X):
-        return self.model.predict(X)
+    #def __call__(self, X):
+    #    return self.model.predict(X)
     
     def __str__(self):
         return str(self.model)

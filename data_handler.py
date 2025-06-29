@@ -7,8 +7,9 @@ import tqdm
 import bisect
 import datetime
 import re
+import os
 
-Site = Enum('Site', ['Me2', 'Me6'])
+#Site = Enum('Site', ['Me2', 'Me6'])
 
 class AmeriFLUXDataset(Dataset, ABC):
     @abstractmethod
@@ -138,26 +139,28 @@ class AmeriFLUXSequenceDataset(Dataset):
     def get_y(self):
         return self.labels
 
-def get_data(site : Site):
-    if not isinstance(site, Site):
-        raise ValueError("the provided site is invalid")
-    filepath = ''
-    if site == Site.Me2:
-        filepath = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_20-5/AMF_US-Me2_BASE_HH_20-5.csv'
-    elif site == Site.Me6:
-        filepath = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_17-5/AMF_US-Me6_BASE_HH_17-5.csv'
+def get_data(data_filepath : str):
+    if not os.path.exists(data_filepath):
+        raise ValueError(f"The provided path {data_filepath} is not valid")
+    #if not isinstance(site, Site):
+    #    raise ValueError("the provided site is invalid")
+    #filepath = ''
+    #if site == Site.Me2:
+    #    filepath = 'AmeriFLUX Data/AMF_US-Me2_BASE-BADM_20-5/AMF_US-Me2_BASE_HH_20-5.csv'
+    #elif site == Site.Me6:
+    #    filepath = 'AmeriFLUX Data/AMF_US-Me6_BASE-BADM_17-5/AMF_US-Me6_BASE_HH_17-5.csv'
 
-    data = pd.read_csv(filepath, header=2).replace(-9999, np.nan)
+    data = pd.read_csv(data_filepath, header=2).replace(-9999, np.nan)
 
     return data
 
-def get_site_vars(site : Site):
-    if not isinstance(site, Site):
-        raise ValueError("the provided site is invalid")
-    data = get_data(site)
+def get_site_vars(data_filepath : str):
+    #if not isinstance(site, Site):
+    #    raise ValueError("the provided site is invalid")
+    data = get_data(data_filepath)
     return data.columns.to_list()
 
-def prepare_data(site_name : Site, input_columns : list[str], eval_years : int = 3, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
+def prepare_data(data_filepath : str, input_columns : list[str], eval_years : int = 3, **kwargs) -> tuple[AmeriFLUXDataset, AmeriFLUXDataset]:
 
     ### Arguments for building time series data
 
@@ -198,12 +201,12 @@ def prepare_data(site_name : Site, input_columns : list[str], eval_years : int =
     match_dates_eval = None
     if match_sequence_length is not None and sequence_length != match_sequence_length:
         print("Generating the reference dataset for our actual dataset to match")
-        match_dataset_train, match_dataset_eval = prepare_data(site_name, input_columns, eval_years=eval_years, sequence_length=match_sequence_length,
+        match_dataset_train, match_dataset_eval = prepare_data(data_filepath, input_columns, eval_years=eval_years, sequence_length=match_sequence_length,
                                      ustar=ustar, flatten=flatten, season=season, interpolate=interpolate)
         match_dates_train = match_dataset_train.get_dates()
         match_dates_eval = match_dataset_eval.get_dates()
 
-    df = get_data(site_name)
+    df = get_data(data_filepath)
     
     # reduce the columns to our desired feature set
     target_col = 'NEE_PI' if 'NEE_PI' in df.columns else 'NEE_PI_F'
@@ -467,16 +470,16 @@ def prepare_data(site_name : Site, input_columns : list[str], eval_years : int =
 # Determines the difference in dataset size with and without the given col
 # Useful for determining a feature set, as some variables have a lot of gaps that reduce
 # the dataset size by as much as ~500 datapoints
-def get_dataset_size_diff(site_name, input_columns: list[str], col:str, sequence_length=None):
+def get_dataset_size_diff(data_filepath, input_columns: list[str], col:str, sequence_length=None):
     if col not in input_columns:
         print("Error: column not in the input set")
         return
-    train, test = prepare_data(site_name, input_columns, interpolate=False, sequence_length=sequence_length)
+    train, test = prepare_data(data_filepath, input_columns, interpolate=False, sequence_length=sequence_length)
     size_with = len(train) + len(test)
 
     cols_without = [c for c in input_columns if c != col]
 
-    train, test = prepare_data(site_name, cols_without, interpolate=False, sequence_length=sequence_length)
+    train, test = prepare_data(data_filepath, cols_without, interpolate=False, sequence_length=sequence_length)
     size_without = len(train) + len(test)
 
     print(f"Removing {col} increases the dataset by {size_without - size_with} ({size_with} -> {size_without})")
@@ -510,13 +513,13 @@ COLUMN_LABELS = {'CO2': {'title':'Carbon Dioxide Content', 'y_label':'Mol fracti
                 'SW_IN': {'title':'Incoming Shortwave Radiation', 'y_label':'Flux (W m-2)'},
                 'SW_OUT': {'title':'Outgoing Shortwave Radiation', 'y_label':'Flux (W m-2)'},
                 'LW_IN': {'title':'Incoming Longwave Radiation', 'y_label':'Flux (W m-2)'},
-                'LW_OUT': {'title':'Outgoing Longwave Radiation', 'y_label':'Flux (W m-2)'},
-                'P': {'title':'Precipitation', 'y_label':'Precipitation Height (mm)'},
+                'LW_OUT': {'title':'Outgoing Longwave Radiation', 'y_label':r'Flux ($W m^{-2}$)'},
+                'P': {'title':'Precipitation', 'y_label':r'Precipitation Height ($mm$)'},
                 'NEE': {'title':'Net Ecosystem Exchange', 'y_label':r'Flux Density ($\mu$mol $m^{-2} s^{-1}$)'},
-                'NEP': {'title':'Net Ecosystem Productivity', 'y_label':'NEP ($\mu$mol $m^{-2} s^{-1}$)'},
-                'RECO': {'title':'Ecosystem Respiration', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
-                'GPP': {'title':'Gross Primary Productivity', 'y_label':'Flux Density (umolCO2 m-2 s-1)'},
-                'D_SNOW': {'title': 'Snow Depth', 'y_label':'Snow Depth (in)'},
+                'NEP': {'title':'Net Ecosystem Productivity', 'y_label':r'NEP ($\mu$mol $m^{-2} s^{-1}$)'},
+                'RECO': {'title':'Ecosystem Respiration', 'y_label':r'Flux Density ($\mu$mol$CO_2 m^{-2} s^{-1}$)'},
+                'GPP': {'title':'Gross Primary Productivity', 'y_label':r'Flux Density ($\mu$mol$CO_2 m^{-2} s^{-1}$)'},
+                'D_SNOW': {'title': 'Snow Depth', 'y_label':r'Snow Depth ($in$)'},
                 }
 
 def find_prefix(var_name : str):

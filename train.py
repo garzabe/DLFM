@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from sklearn.metrics import r2_score, mean_squared_error
 
-from data_handler import AmeriFLUXDataset, prepare_data, Site, get_site_vars
+from data_handler import AmeriFLUXDataset, prepare_data, get_site_vars
 from model_class import MODEL_HYPERPARAMETERS, XGBoost, RandomForest, NEPModel
 
 HYPERPARAMETER_NAMES = {
@@ -205,7 +205,7 @@ def train_kfold(num_folds : int,
 
     return avg_r2, avg_loss
 
-def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomForest], site, input_columns, **kwargs) -> tuple[list[NEPModel | XGBoost | RandomForest], dict[str, None], list[dict[str, None]]]:
+def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomForest], data, input_columns, **kwargs) -> tuple[list[NEPModel | XGBoost | RandomForest], dict[str, None], list[dict[str, None]]]:
     model_name = model_class.__name__
  
     # Accepted kwargs
@@ -285,7 +285,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
             for key, val in data_candidate.items():
                 hparam_print += f"{HYPERPARAMETER_NAMES[key]['title']}: {val}\n"
             
-            train_data, _ = prepare_data(site, input_columns, **data_candidate, **kwargs)
+            train_data, _ = prepare_data(data, input_columns, **data_candidate, **kwargs)
             if train_data == None or len(train_data) == 0: # or train_data.get_num_years() <= 1:
                 print("Training set does not have enough data. Skipping this candidate...")
                 continue
@@ -329,7 +329,7 @@ def train_hparam(model_class : Type[NEPModel] | Type[XGBoost] | Type[RandomFores
     print(f"Training the best performing model on the entire training set {num_models} times")
     num_features = len(input_columns)*(3 if not is_rnn and not flatten else 1)
     for i in range(num_models):
-        train_data, eval_data = prepare_data(site, input_columns, **data_best, **kwargs)
+        train_data, eval_data = prepare_data(data, input_columns, **data_best, **kwargs)
         if sklearn_model:
             model : XGBoost | RandomForest = model_class(**best, **data_best)
             X = train_data.get_X()
@@ -467,7 +467,7 @@ Executes hyperparameter tuning and best-model(s) training via train_hparam.
 Evaluates each best-model on the evaluation set and training set.
 Records the results of train_hparam and the evaluation, and returns the mean r squared and MSE for both eval and train set.
 """
-def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs) -> tuple[float, float, float, float]:
+def train_test_eval(model_class : Type[nn.Module], data, input_columns, **kwargs) -> tuple[float, float, float, float]:
     num_folds = kwargs.get('num_folds', 5)
     #time_series = kwargs.get('time_series', False)
     skip_eval = kwargs.get('skip_eval', False)
@@ -482,7 +482,7 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
  
 
     # Perform grid search with k-fold cross validation to optimize the hyperparameters
-    final_models, hparams, history = train_hparam(model_class, site, input_columns, **kwargs)
+    final_models, hparams, history = train_hparam(model_class, data, input_columns, **kwargs)
     if len(final_models) == 0:
         print("train_hparam failed to train any models")
         return -np.inf
@@ -492,10 +492,10 @@ def train_test_eval(model_class : Type[nn.Module], site, input_columns, **kwargs
     data_kwargs.update(hparams)
     if time_series:
         kwargs.pop('sequence_length', None)
-        train_data, eval_data = prepare_data(site, input_columns, **data_kwargs)
+        train_data, eval_data = prepare_data(data, input_columns, **data_kwargs)
     else:
         kwargs.pop('stat_interval', None)
-        train_data, eval_data = prepare_data(site, input_columns, **data_kwargs)
+        train_data, eval_data = prepare_data(data, input_columns, **data_kwargs)
 
     r2_evals = []
     r2_train = []

@@ -5,13 +5,13 @@ import numpy as np
 import scipy.stats as st
 from datetime import datetime
 
-from data_handler import  Site, prepare_data, find_prefix, COLUMN_LABELS
+from data_handler import  prepare_data, find_prefix, COLUMN_LABELS
 from train import train_test_eval, fmt_date_string, train_hparam #, feature_pruning
 from model_class import FirstANN, DynamicANN, RNN, LSTM, XGBoost, RandomForest, xLSTM, MODEL_HYPERPARAMETERS
 
 import matplotlib.pyplot as plt
 
-def plot_sequence_importance(site, input_columns, model_class, num_models=5, max_sequence_length=90, flatten=False, **kwargs):
+def plot_sequence_importance(data_filepath, input_columns, model_class, num_models=5, max_sequence_length=90, flatten=False, **kwargs):
     r2_results = []
     mse_results = []
     r2_t_results = []
@@ -36,7 +36,7 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
         sl_arg = {'sequence_length': sl}
         iter = []
         for _ in range(num_models):
-            r2, mse, r2_t, mse_t = train_test_eval(model_class, site, input_columns, skip_eval=True, stats=use_stat_interval, **sl_arg, **sequence_args)
+            r2, mse, r2_t, mse_t = train_test_eval(model_class, data_filepath, input_columns, skip_eval=True, stats=use_stat_interval, **sl_arg, **sequence_args)
             iter.append([r2, mse, r2_t, mse_t])
         iter = np.array(iter)
 
@@ -92,19 +92,19 @@ def plot_sequence_importance(site, input_columns, model_class, num_models=5, max
 
 # Does an exhaustive search for the best hyperparameter configuration of a vanilla neural network
 # we can optionally include multiple stat intervals to search on as well
-def best_vanilla_network_search(site, input_columns, sequence_length=None, flatten=False):
+def best_vanilla_network_search(data_filepath, input_columns, sequence_length=None, flatten=False):
     # To define a model architecture with a single hidden layer, you must add a comma after the layer dimension in the tuple
     # or Python will simplify it to an int
     model_hparams = MODEL_HYPERPARAMETERS[DynamicANN]
     if not flatten:
-        train_test_eval(DynamicANN,site=site, input_columns=input_columns, num_folds=7, stat_interval=sequence_length,
+        train_test_eval(DynamicANN,data=data_filepath, input_columns=input_columns, num_folds=7, stat_interval=sequence_length,
                         **model_hparams)
     else:
-        train_test_eval(DynamicANN, site=site, input_columns=input_columns, num_folds=7, sequence_length=sequence_length, flatten=True,
+        train_test_eval(DynamicANN, data=data_filepath, input_columns=input_columns, num_folds=7, sequence_length=sequence_length, flatten=True,
                         **model_hparams)
     
-def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=None, model_class = LSTM, dropout=[0.0, 0.001], weight_decay=[0.0, 0.001]):
-    train_test_eval(model_class, site=site, input_columns=input_columns,
+def best_rnn_search(data_filepath, input_columns, sequence_length, max_sequence_length=None, model_class = LSTM, dropout=[0.0, 0.001], weight_decay=[0.0, 0.001]):
+    train_test_eval(model_class, data=data_filepath, input_columns=input_columns,
                     num_folds=7,
                     epochs=[100, 500],
                     lr=[1e-2, 1e-3],
@@ -117,9 +117,9 @@ def best_rnn_search(site, input_columns, sequence_length, max_sequence_length=No
                     weight_decay=weight_decay,
                     time_series=True)
     
-def variable_importance(site, input_columns, model_class, var_names : list[str], timesteps : list[int] =[1], sequence_length=1, **model_kwargs):
+def variable_importance(data_filepath, input_columns, model_class, var_names : list[str], timesteps : list[int] =[1], sequence_length=1, **model_kwargs):
     # train a model
-    models, best, history = train_hparam(model_class, site, input_columns, skip_eval=False, skip_curve=False, sequence_length=sequence_length, **model_kwargs)
+    models, best, history = train_hparam(model_class, data_filepath, input_columns, skip_eval=False, skip_curve=False, sequence_length=sequence_length, **model_kwargs)
     device = ("cuda" if cuda.is_available() else "cpu")
 
     # given the var_name input (and potentially the time step), calculate the partial derivatives
@@ -128,7 +128,7 @@ def variable_importance(site, input_columns, model_class, var_names : list[str],
     # we need to prepare data and go as far as preparing the dataloader here to have the exact tensors
     # that are tied to the outputs
     # is grads batched allows for batch gradient calculation
-    train, _ = prepare_data(site, input_columns, sequence_length=sequence_length, **model_kwargs)
+    train, _ = prepare_data(data_filepath, input_columns, sequence_length=sequence_length, **model_kwargs)
     vars_idx = [train.get_var_idx(var_name) for var_name in var_names]
     dates : list[datetime] = train.get_dates()
     dataloader = DataLoader(train, batch_size=1, shuffle=False)
@@ -308,7 +308,7 @@ me6_input_column_set = [
 ]
 
 def main():
-    SITE = Site.Me2
+    data_filepath = 'data/data.csv'
     COLUMNS = me2_input_column_set
     MAX_SEQUENCE_LENGTH=120
     sequence_lengths = [3,4,5,6,7,14,31,90]
@@ -320,7 +320,9 @@ def main():
     hparams : dict[str, str | int] = MODEL_HYPERPARAMETERS[model_class]
     hparams.update({'lr':0.001, 'epochs':2500, 'hidden_state_size': 8, 'num_layers': 3, 'dropout': 0.00, 'weight_decay': 0.00})
 
-    variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), sequence_length=MAX_SEQUENCE_LENGTH, **hparams)
+    train_test_eval(model_class, data_filepath, None, sequence_length=MAX_SEQUENCE_LENGTH, num_folds=n_folds, num_models=n_models, **hparams)
+
+    #variable_importance(SITE, COLUMNS, model_class, me2_input_column_set, timesteps=list(range(0,MAX_SEQUENCE_LENGTH)), sequence_length=MAX_SEQUENCE_LENGTH, **hparams)
 
 
 
